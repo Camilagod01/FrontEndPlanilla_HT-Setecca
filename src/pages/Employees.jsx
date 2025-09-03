@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { listEmployees } from "../services/employees";
+import TopNav from "../components/TopNav";
 
 export default function Employees() {
   const [data, setData] = useState([]);
@@ -13,6 +14,8 @@ export default function Employees() {
   }, [page]);
 
   return (
+    <div>
+      <TopNav />
     <div className="p-6">
       <h2>Empleados</h2>
       <table>
@@ -32,6 +35,7 @@ export default function Employees() {
         <span>Página {page}</span>
         <button onClick={()=>setPage(p=>p+1)}>Next</button>
       </div>
+    </div>
     </div>
   );
 }

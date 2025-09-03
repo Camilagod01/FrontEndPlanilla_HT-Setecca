@@ -1,17 +1,11 @@
-import { useAuth } from "../context/useAuth";
+import TopNav from "../components/TopNav";
 import { Link } from "react-router-dom";
 
 export default function Dashboard() {
-  const { user, signOut } = useAuth();
-
   return (
-    <div className="p-6">
-      <header className="flex items-center gap-4">
-        <span>Hola, {user?.name ?? "Usuario"}</span>
-        <button onClick={signOut}>Salir</button>
-      </header>
-
-      <main className="mt-4">
+    <div>
+      <TopNav />
+      <main className="p-6">
         <h2>Dashboard</h2>
         <ul>
           <li><Link to="/employees">Ir a Empleados</Link></li>

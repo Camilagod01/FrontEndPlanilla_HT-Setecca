@@ -3,6 +3,7 @@ import Login from "../pages/Login";
 import Dashboard from "../pages/Dashboard";
 import Employees from "../pages/Employees";
 import ProtectedRoute from "./ProtectedRoute";
+import EmployeesProbe from "../pages/EmployeesProbe";
 
 export default function AppRouter() {
   return (
@@ -12,6 +13,7 @@ export default function AppRouter() {
         <Route element={<ProtectedRoute/>}>
           <Route path="/" element={<Dashboard/>} />
           <Route path="/employees" element={<Employees/>} />
+          <Route path="/employeesList" element={<EmployeesProbe/>} />
         </Route>
       </Routes>
     </BrowserRouter>
