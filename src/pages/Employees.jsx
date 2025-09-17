@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { listEmployees } from "../services/employees";
 import TopNav from "../components/TopNav";
 
+
+
 export default function Employees() {
   const navigate = useNavigate();
 
@@ -110,6 +112,7 @@ export default function Employees() {
                   >
                     <td className="px-4 py-2">{e.id}</td>
                     <td className="px-4 py-2">{e.code ?? "-"}</td>
+                    
                     <td className="px-4 py-2">{[e.first_name, e.last_name].filter(Boolean).join(" ") || "-"}</td>
                     <td className="px-4 py-2">{e.position ?? "-"}</td>
                     <td className="px-4 py-2">{e.status ?? "active"}</td>
