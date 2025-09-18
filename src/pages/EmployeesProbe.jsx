@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import api from "../lib/api";
-import TopNav from "../components/TopNav";
 
 export default function EmployeesProbe() {
   const [data, setData] = useState(null);
@@ -16,7 +15,6 @@ export default function EmployeesProbe() {
   if (!data) return <p>Cargando...</p>;
   return (
     <div>
-        <TopNav />
       <p>Total: {data.total}</p>
       <ul>
         {data.data.slice(0,5).map(e => (

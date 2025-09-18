@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { listEmployees } from "../services/employees";
-import TopNav from "../components/TopNav";
 
 
 
@@ -53,7 +52,6 @@ export default function Employees() {
 
   return (
     <div>
-      <TopNav />
       <div className="p-6 max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">Empleados</h2>

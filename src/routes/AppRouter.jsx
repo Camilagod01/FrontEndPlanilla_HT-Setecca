@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Login from "../pages/Login";
+import Login from "../pages/login";
 import Dashboard from "../pages/Dashboard";
 import Employees from "../pages/Employees";          // lista de empleados
 import ProtectedRoute from "./ProtectedRoute";

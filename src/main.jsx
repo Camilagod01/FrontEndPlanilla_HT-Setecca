@@ -1,10 +1,9 @@
-import React from "react";
 import ReactDOM from "react-dom/client";
-import AppRouter from "./routes/AppRouter";
+import App from "./App";
 import { AuthProvider } from "./context/AuthContextObject";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <AuthProvider>
-    <AppRouter />
+    <App />
   </AuthProvider>
 );
