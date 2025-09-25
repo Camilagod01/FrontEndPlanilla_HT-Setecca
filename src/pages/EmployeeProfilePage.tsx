@@ -3,6 +3,11 @@ import { useEffect, useState } from "react";
 import dayjs from "dayjs";
 import api from "../lib/api"; // OJO: estás en /pages → sube a /lib
 
+import { downloadBlob } from "../lib/downloadBlob";
+
+
+
+
 // ===== Tipos mínimos (flexibles para no romper) =====
 type Maybe<T> = T | null | undefined;
 
@@ -233,6 +238,17 @@ function PunchesSection({ empId }: { empId: number }) {
   const [meta, setMeta] = useState({ current_page: 1, last_page: 1 });
   const [loading, setLoading] = useState(false);
 
+    // --- controles para export ---
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [exporting, setExporting] = useState(false);
+
+    // mapea el status de la UI al que espera el backend
+  const statusApi =
+    status === "ok" ? "completo" :
+    status === "incompleta" ? "pendiente_salida" :
+    status === "anomala" ? "anómala" : "";
+
   const fetchEntries = async (p = page) => {
     try {
       setLoading(true);
@@ -266,27 +282,124 @@ function PunchesSection({ empId }: { empId: number }) {
     fetchEntries(1);
   };
 
-  return (
-    <div className="grid gap-3">
-      <div className="flex gap-2 items-end">
+
+  
+  // Exportar CSV por empleado
+  const handleExportCSV = async () => {
+    try {
+      setExporting(true);
+      const params = new URLSearchParams();
+
+      // usar from/to del bloque de export; si no, cae al filtro 'date' de la tabla
+      if (from) params.set("from", from);
+      if (to)   params.set("to", to);
+      if (!from && !to && date) {
+        params.set("from", date);
+        params.set("to", date);
+      }
+
+      if (statusApi) params.set("status", statusApi);
+      params.set("format", "csv");
+
+      const res = await api.get(
+        `/employees/${empId}/time-entries/export?${params.toString()}`,
+        { responseType: "blob" }
+      );
+
+  const ff = (s?: string|null) => (s && s.trim()) || "all";
+    const fname = `marcaciones_emp${empId}_${ff(params.get("from"))}_${ff(params.get("to"))}_${statusApi || "todos"}.csv`;
+    downloadBlob(res.data, fname);
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.response?.data?.message || "No se pudo exportar");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  
+
+  // ids para accesibilidad
+  const dateId = `date-${empId}`;
+  const statusId = `status-${empId}`;
+  const fromId = `from-${empId}`;
+  const toId = `to-${empId}`;
+
+ return (
+    <div className="grid gap-4">
+      {/* Filtros para la TABLA */}
+      <div className="flex flex-wrap gap-2 items-end">
         <label className="grid">
-          <span>Fecha</span>
-          <input type="date" className="border p-2 rounded" value={date} onChange={(e) => setDate(e.target.value)} />
+          <span>Fecha (tabla)</span>
+          <input
+            id={dateId}
+            type="date"
+            className="border p-2 rounded"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
         </label>
+
         <label className="grid">
           <span>Status</span>
-          <select className="border p-2 rounded" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <select
+            id={statusId}
+            className="border p-2 rounded"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+          >
             <option value="">Todos</option>
             <option value="ok">OK</option>
             <option value="incompleta">Incompleta</option>
             <option value="anomala">Anómala</option>
           </select>
         </label>
+
         <button onClick={applyFilters} className="bg-gray-900 text-white px-4 py-2 rounded">
           {loading ? "Buscando…" : "Filtrar"}
         </button>
       </div>
 
+      {/* Controles para EXPORT por empleado */}
+      <div className="flex flex-wrap gap-2 items-end">
+        <label className="grid">
+          <span>Desde (export)</span>
+          <input
+            id={fromId}
+            type="date"
+            className="border p-2 rounded"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+          />
+        </label>
+
+        <label className="grid">
+          <span>Hasta (export)</span>
+          <input
+            id={toId}
+            type="date"
+            className="border p-2 rounded"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+          />
+        </label>
+
+        <button
+          onClick={handleExportCSV}
+          className="px-3 py-2 border rounded disabled:opacity-50"
+          disabled={exporting}
+          aria-label="Exportar marcaciones del empleado en CSV"
+          title="Exportar CSV"
+        >
+          {exporting ? "Exportando…" : "Exportar CSV"}
+        </button>
+
+        <div className="text-xs text-gray-500">
+          Tip: si no defines “Desde/Hasta”, usa la fecha del filtro de tabla.
+        </div>
+      </div>
+
+      {/* Tabla */}
       <div className="overflow-auto border rounded">
         <table className="w-full text-sm">
           <thead className="bg-gray-100">
@@ -319,6 +432,7 @@ function PunchesSection({ empId }: { empId: number }) {
         </table>
       </div>
 
+      {/* Paginación */}
       <div className="flex items-center gap-2">
         <button
           disabled={meta.current_page <= 1}
@@ -403,4 +517,7 @@ function Metric({ title, value, loading }: { title: string; value: number; loadi
       <div className="text-3xl font-semibold">{loading ? "…" : `₡${Number(value).toLocaleString()}`}</div>
     </div>
   );
+
+ 
 }
+

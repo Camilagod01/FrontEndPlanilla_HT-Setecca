@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { listEmployees } from "../services/employees";
+import { exportTimeEntriesCSV } from "../lib/api"; // 
+
 
 
 
@@ -12,6 +14,11 @@ export default function Employees() {
   const [debounced, setDebounced] = useState("");
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
+
+  // Filtros de export global
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [status, setStatus] = useState("");
 
   // datos
   const [resp, setResp] = useState(null);   // respuesta completa de Laravel {data, meta, links}
@@ -128,6 +135,59 @@ export default function Employees() {
           </div>
         )}
 
+        <div className="flex items-center gap-2 mt-4">
+  {/* Filtros (inputs/selects) */}
+  <input
+    type="date"
+    value={from}
+    onChange={(e) => setFrom(e.target.value)}
+    className="border rounded px-2 py-1"
+  />
+  <input
+    type="date"
+    value={to}
+    onChange={(e) => setTo(e.target.value)}
+    className="border rounded px-2 py-1"
+  />
+  <select
+    value={status}
+    onChange={(e) => setStatus(e.target.value)}
+    className="border rounded px-2 py-1"
+  >
+    <option value="">Todos</option>
+    <option value="completo">Completo</option>
+    <option value="pendiente_salida">Pendiente salida</option>
+    <option value="anómala">Anómala</option>
+  </select>
+
+  {/* Botón de exportar */}
+  <button
+    className="px-3 py-2 border rounded"
+    onClick={async () => {
+      try {
+        await exportTimeEntriesCSV({
+          employee: search?.trim() || undefined,
+          from: from || undefined,
+          to: to || undefined,
+          status: status || undefined,
+        });
+        // Si no usas react-hot-toast, usa alert
+        // toast.success("Exportación iniciada");
+        alert("Exportación iniciada");
+      } catch (e) {
+        // toast.error(`No se pudo exportar: ${e.message}`);
+    console.error(e);
+  alert(`No se pudo exportar: ${e.message || e}`);
+      }
+    }}
+    disabled={from && to && from > to}
+    aria-disabled={from && to && from > to}
+  >
+    Exportar CSV (global)
+  </button>
+</div>
+
+
         {/* Paginación */}
         <div className="flex items-center justify-between mt-4">
           <div className="text-sm text-gray-600">
@@ -152,5 +212,7 @@ export default function Employees() {
         </div>
       </div>
     </div>
+
+    
   );
 }

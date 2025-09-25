@@ -6,7 +6,7 @@ import ProtectedRoute from "./ProtectedRoute";
 import EmployeesProbe from "../pages/EmployeesProbe"; // pruebas o lista temporal
 import EmployeeProfilePage from "../pages/EmployeeProfilePage"; // 👈 nuevo
 import EmployeeCreatePage from "../pages/EmployeeCreatePage";   // 👈 nuevo
-
+import TimeEntriesPage from '../pages/TimeEntriesPage'; // 👈 nuevo
 export default function AppRouter() {
   return (
     <BrowserRouter>
@@ -25,6 +25,10 @@ export default function AppRouter() {
 
           {/* Ruta de pruebas (si aún la usas) */}
           <Route path="/employeesList" element={<EmployeesProbe />} />
+
+       
+// ...
+<Route path="/time-entries" element={<TimeEntriesPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

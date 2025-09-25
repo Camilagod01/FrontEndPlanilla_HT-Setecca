@@ -9,15 +9,15 @@ export default function EmployeeCreatePage() {
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Errors>({});
 
-  // Campos válidos según tu tabla: employees (code, first_name, last_name, email, position, hire_date, status)
+  // Campos: code, first_name, last_name, email, position, hire_date, status
   const [form, setForm] = useState({
     code: "",
     first_name: "",
     last_name: "",
     email: "",
     position: "",
-    hire_date: "",        // <-- en tu DB se llama hire_date
-    status: "active",     // <-- enum: active | inactive
+    hire_date: "",
+    status: "active",
   });
 
   const setField = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -28,7 +28,7 @@ export default function EmployeeCreatePage() {
   const validateClient = () => {
     const errs: Errors = {};
     if (!form.first_name.trim()) errs.first_name = ["El nombre es requerido"];
-    if (!form.last_name.trim())  errs.last_name  = ["El apellido es requerido"];
+    if (!form.last_name.trim()) errs.last_name = ["El apellido es requerido"];
     if (form.email && !/\S+@\S+\.\S+/.test(form.email)) errs.email = ["Correo inválido"];
     if (form.hire_date && new Date(form.hire_date) > new Date()) errs.hire_date = ["La fecha no puede ser futura"];
     setErrors(errs);
@@ -42,7 +42,6 @@ export default function EmployeeCreatePage() {
     try {
       setSaving(true);
       setErrors({});
-      // Enviamos SOLO campos válidos para tu tabla:
       const payload = {
         code: form.code || undefined,
         first_name: form.first_name,
@@ -54,13 +53,11 @@ export default function EmployeeCreatePage() {
       };
       const res = await api.post("/employees", payload);
       const emp = res.data;
-      // Redirige al perfil
       nav(`/employees/${emp.id}`);
     } catch (err: any) {
       const data = err?.response?.data;
-      if (data?.errors) {
-        setErrors(data.errors as Errors);
-      } else {
+      if (data?.errors) setErrors(data.errors as Errors);
+      else {
         alert("No se pudo crear el empleado");
         console.error(err);
       }
@@ -70,58 +67,165 @@ export default function EmployeeCreatePage() {
   };
 
   const fieldErr = (k: keyof typeof form) => errors[k]?.[0];
+  const errId = (k: keyof typeof form) => `err-${k}`;
 
   return (
     <div className="p-4 max-w-3xl mx-auto">
       <h1 className="text-2xl font-semibold mb-4">Agregar empleado</h1>
 
-      <form onSubmit={submit} className="grid gap-4">
+      <form onSubmit={submit} className="grid gap-4" noValidate>
         <div className="grid md:grid-cols-2 gap-3">
           <div className="grid">
-            <label className="mb-1">Nombre *</label>
-            <input name="first_name" className="border p-2 rounded" value={form.first_name} onChange={setField} />
-            {fieldErr("first_name") && <span className="text-red-600 text-sm">{fieldErr("first_name")}</span>}
+            <label className="mb-1" htmlFor="first_name">Nombre *</label>
+            <input
+              id="first_name"
+              name="first_name"
+              type="text"
+              className="border p-2 rounded"
+              value={form.first_name}
+              onChange={setField}
+              autoComplete="given-name"
+              required
+              {...(fieldErr("first_name")
+                ? { "aria-invalid": true, "aria-describedby": errId("first_name") }
+                : {})}
+            />
+            {fieldErr("first_name") && (
+              <span id={errId("first_name")} className="text-red-600 text-sm" role="alert">
+                {fieldErr("first_name")}
+              </span>
+            )}
           </div>
+
           <div className="grid">
-            <label className="mb-1">Apellido *</label>
-            <input name="last_name" className="border p-2 rounded" value={form.last_name} onChange={setField} />
-            {fieldErr("last_name") && <span className="text-red-600 text-sm">{fieldErr("last_name")}</span>}
+            <label className="mb-1" htmlFor="last_name">Apellido *</label>
+            <input
+              id="last_name"
+              name="last_name"
+              type="text"
+              className="border p-2 rounded"
+              value={form.last_name}
+              onChange={setField}
+              autoComplete="family-name"
+              required
+              {...(fieldErr("last_name")
+                ? { "aria-invalid": true, "aria-describedby": errId("last_name") }
+                : {})}
+            />
+            {fieldErr("last_name") && (
+              <span id={errId("last_name")} className="text-red-600 text-sm" role="alert">
+                {fieldErr("last_name")}
+              </span>
+            )}
           </div>
         </div>
 
         <div className="grid md:grid-cols-2 gap-3">
           <div className="grid">
-            <label className="mb-1">Email</label>
-            <input name="email" className="border p-2 rounded" value={form.email} onChange={setField} />
-            {fieldErr("email") && <span className="text-red-600 text-sm">{fieldErr("email")}</span>}
+            <label className="mb-1" htmlFor="email">Email</label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              className="border p-2 rounded"
+              value={form.email}
+              onChange={setField}
+              autoComplete="email"
+              {...(fieldErr("email")
+                ? { "aria-invalid": true, "aria-describedby": errId("email") }
+                : {})}
+            />
+            {fieldErr("email") && (
+              <span id={errId("email")} className="text-red-600 text-sm" role="alert">
+                {fieldErr("email")}
+              </span>
+            )}
           </div>
+
           <div className="grid">
-            <label className="mb-1">Puesto</label>
-            <input name="position" className="border p-2 rounded" value={form.position} onChange={setField} />
-            {fieldErr("position") && <span className="text-red-600 text-sm">{fieldErr("position")}</span>}
+            <label className="mb-1" htmlFor="position">Puesto</label>
+            <input
+              id="position"
+              name="position"
+              type="text"
+              className="border p-2 rounded"
+              value={form.position}
+              onChange={setField}
+              autoComplete="organization-title"
+              {...(fieldErr("position")
+                ? { "aria-invalid": true, "aria-describedby": errId("position") }
+                : {})}
+            />
+            {fieldErr("position") && (
+              <span id={errId("position")} className="text-red-600 text-sm" role="alert">
+                {fieldErr("position")}
+              </span>
+            )}
           </div>
         </div>
 
         <div className="grid md:grid-cols-3 gap-3">
           <div className="grid">
-            <label className="mb-1">Fecha de contratación</label>
-            <input type="date" name="hire_date" className="border p-2 rounded" value={form.hire_date} onChange={setField} />
-            {fieldErr("hire_date") && <span className="text-red-600 text-sm">{fieldErr("hire_date")}</span>}
+            <label className="mb-1" htmlFor="hire_date">Fecha de contratación</label>
+            <input
+              id="hire_date"
+              name="hire_date"
+              type="date"
+              className="border p-2 rounded"
+              value={form.hire_date}
+              onChange={setField}
+              {...(fieldErr("hire_date")
+                ? { "aria-invalid": true, "aria-describedby": errId("hire_date") }
+                : {})}
+            />
+            {fieldErr("hire_date") && (
+              <span id={errId("hire_date")} className="text-red-600 text-sm" role="alert">
+                {fieldErr("hire_date")}
+              </span>
+            )}
           </div>
 
           <div className="grid">
-            <label className="mb-1">Estado</label>
-            <select name="status" className="border p-2 rounded" value={form.status} onChange={setField}>
+            <label className="mb-1" htmlFor="status">Estado</label>
+            <select
+              id="status"
+              name="status"
+              className="border p-2 rounded"
+              value={form.status}
+              onChange={setField}
+              {...(fieldErr("status")
+                ? { "aria-invalid": true, "aria-describedby": errId("status") }
+                : {})}
+            >
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
             </select>
-            {fieldErr("status") && <span className="text-red-600 text-sm">{fieldErr("status")}</span>}
+            {fieldErr("status") && (
+              <span id={errId("status")} className="text-red-600 text-sm" role="alert">
+                {fieldErr("status")}
+              </span>
+            )}
           </div>
 
           <div className="grid">
-            <label className="mb-1">Código (único)</label>
-            <input name="code" className="border p-2 rounded" value={form.code} onChange={setField} placeholder="EMP-001" />
-            {fieldErr("code") && <span className="text-red-600 text-sm">{fieldErr("code")}</span>}
+            <label className="mb-1" htmlFor="code">Código (único)</label>
+            <input
+              id="code"
+              name="code"
+              type="text"
+              className="border p-2 rounded"
+              value={form.code}
+              onChange={setField}
+              placeholder="EMP-001"
+              {...(fieldErr("code")
+                ? { "aria-invalid": true, "aria-describedby": errId("code") }
+                : {})}
+            />
+            {fieldErr("code") && (
+              <span id={errId("code")} className="text-red-600 text-sm" role="alert">
+                {fieldErr("code")}
+              </span>
+            )}
           </div>
         </div>
 
@@ -129,7 +233,9 @@ export default function EmployeeCreatePage() {
           <button type="submit" disabled={saving} className="bg-blue-600 text-white px-4 py-2 rounded">
             {saving ? "Guardando…" : "Crear empleado"}
           </button>
-          <button type="button" onClick={() => nav(-1)} className="border px-4 py-2 rounded">Cancelar</button>
+          <button type="button" onClick={() => nav(-1)} className="border px-4 py-2 rounded">
+            Cancelar
+          </button>
         </div>
       </form>
     </div>
