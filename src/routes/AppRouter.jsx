@@ -3,10 +3,9 @@ import Login from "../pages/login";
 import Dashboard from "../pages/Dashboard";
 import Employees from "../pages/Employees";          // lista de empleados
 import ProtectedRoute from "./ProtectedRoute";
-import EmployeesProbe from "../pages/EmployeesProbe"; // pruebas o lista temporal
-import EmployeeProfilePage from "../pages/EmployeeProfilePage"; // 👈 nuevo
-import EmployeeCreatePage from "../pages/EmployeeCreatePage";   // 👈 nuevo
-import TimeEntriesPage from '../pages/TimeEntriesPage'; // 👈 nuevo
+import EmployeeProfilePage from "../pages/EmployeeProfilePage";
+import EmployeeCreatePage from "../pages/EmployeeCreatePage";
+import TimeEntriesPage from '../pages/TimeEntriesPage';
 export default function AppRouter() {
   return (
     <BrowserRouter>
@@ -23,12 +22,8 @@ export default function AppRouter() {
           <Route path="/employees/new" element={<EmployeeCreatePage />} />
           <Route path="/employees/:id" element={<EmployeeProfilePage />} />
 
-          {/* Ruta de pruebas (si aún la usas) */}
-          <Route path="/employeesList" element={<EmployeesProbe />} />
+          <Route path="/time-entries" element={<TimeEntriesPage />} />
 
-       
-// ...
-<Route path="/time-entries" element={<TimeEntriesPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

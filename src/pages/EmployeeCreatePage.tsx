@@ -216,7 +216,7 @@ export default function EmployeeCreatePage() {
               className="border p-2 rounded"
               value={form.code}
               onChange={setField}
-              placeholder="EMP-001"
+              placeholder="emp-0001"
               {...(fieldErr("code")
                 ? { "aria-invalid": true, "aria-describedby": errId("code") }
                 : {})}

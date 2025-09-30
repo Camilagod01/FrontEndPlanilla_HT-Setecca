@@ -19,7 +19,7 @@ export default function Layout() {
           <NavLink to="/dashboard" className={link}>Dashboard</NavLink>
           <NavLink to="/employees" className={link}>Empleados</NavLink>
           <NavLink to="/employees/new" className={link}>Agregar empleado</NavLink>
-          <NavLink to="/employeesList" className={link}>Lista (pruebas)</NavLink>
+          <NavLink to="/time-entries" className={link}>Marcaciones</NavLink>
         </nav>
 
         <button onClick={logout} style={{ marginTop: 16 }}>

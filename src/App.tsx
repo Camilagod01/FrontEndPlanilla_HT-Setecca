@@ -2,11 +2,11 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/login";
 import Dashboard from "./pages/Dashboard";
 import Employees from "./pages/Employees";
-import EmployeesProbe from "./pages/EmployeesProbe";
 import EmployeeProfilePage from "./pages/EmployeeProfilePage";
 import EmployeeCreatePage from "./pages/EmployeeCreatePage";
 import ProtectedRoute from "./routes/ProtectedRoute"; // ya lo tienes
 import Layout from "./components/Layout";             // lo creamos en el paso 3
+import TimeEntries from './pages/TimeEntriesPage';
 
 export default function App() { 
   return (
@@ -28,7 +28,7 @@ export default function App() {
             <Route path="/employees/:id" element={<EmployeeProfilePage />} />
 
             {/* (opcional) Lista de pruebas */}
-            <Route path="/employeesList" element={<EmployeesProbe />} />
+            <Route path="/time-entries" element={<TimeEntries />} />
           </Route>
         </Route>
 
