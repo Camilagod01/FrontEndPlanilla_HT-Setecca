@@ -110,6 +110,40 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 
 export default api;
 
+/* ============================================================
+   =============== Tipos para /metrics/hours ==================
+   ============================================================ */
+
+export interface EmployeeHoursDay { date: string; hours: number }
+
+export interface EmployeeHoursResponse {
+  employee_id: number;
+  from: string; // YYYY-MM-DD
+  to: string;   // YYYY-MM-DD
+  total_hours: number;
+  overtime: {
+    daily_hours: number;
+    weekly_hours: number;
+    multipliers: { daily: number; weekly: number };
+  };
+  days: EmployeeHoursDay[];
+}
+
+// ===== Función para GET /api/metrics/hours =====
+export async function fetchEmployeeHours(params: {
+  employee_id: number;
+  from: string;
+  to: string;
+}) {
+  const { data } = await api.get<EmployeeHoursResponse>("/metrics/hours", { params });
+  return data;
+}
+
+/* ============================================================
+   ============ Utilidades (CSV Export) ============
+   ============================================================ */
+
+
 // Helper para construir nombre de archivo con rango
 function buildExportFilename(prefix: string, params: { from?: string; to?: string }) {
   const now = new Date();
@@ -163,6 +197,9 @@ export async function exportTimeEntriesCSV(params: {
     console.error("Export error", status, detail);
     throw new Error(`HTTP ${status} ${detail?.slice(0,200) || ""}`.trim());
   }
+
+
+
 }
 
 

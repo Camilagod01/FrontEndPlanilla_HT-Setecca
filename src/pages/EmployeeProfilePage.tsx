@@ -2,6 +2,8 @@ import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import dayjs from "dayjs";
 import api from "../lib/api"; // OJO: estás en /pages → sube a /lib
+import {EmployeeHoursCard} from "../pages/EmployeeHoursCard";
+import { useEmployeeHours } from "../lib/useEmployeeHours";
 
 import { downloadBlob } from "../lib/downloadBlob";
 
@@ -31,7 +33,6 @@ interface TimeEntry {
   check_out?: string | null;
   notes?: string | null;
   source?: string | null;
-  //status?: string | null;
 }
 
 // ===== Página principal =====
@@ -39,7 +40,9 @@ export default function EmployeeProfilePage() {
   const { id } = useParams<{ id: string }>();
   const [emp, setEmp] = useState<Maybe<Employee>>(null);
   const [loadingEmp, setLoadingEmp] = useState<boolean>(true);
-  const [tab, setTab] = useState<"general" | "hours" | "punches" | "finance" | "vacations" | "bonus">("general");
+  const [tab, setTab] = useState<
+    "general" | "hours" | "punches" | "finance" | "vacations" | "bonus"
+  >("general");
 
   useEffect(() => {
     let alive = true;
@@ -73,18 +76,22 @@ export default function EmployeeProfilePage() {
       </div>
 
       <div className="flex gap-2 mb-6">
-        {([
-          ["general", "Datos generales"],
-          ["hours", "Horas laboradas"],
-          ["punches", "Marcaciones"],
-          ["finance", "Finanzas"],
-          ["vacations", "Vacaciones"],
-          ["bonus", "Aguinaldo"],
-        ] as const).map(([key, label]) => (
+        {(
+          [
+            ["general", "Datos generales"],
+            ["hours", "Horas laboradas"],
+            ["punches", "Marcaciones"],
+            ["finance", "Finanzas"],
+            ["vacations", "Vacaciones"],
+            ["bonus", "Aguinaldo"],
+          ] as const
+        ).map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`px-3 py-2 rounded ${tab === key ? "bg-black text-white" : "bg-gray-100"}`}
+            className={`px-3 py-2 rounded ${
+              tab === key ? "bg-black text-white" : "bg-gray-100"
+            }`}
           >
             {label}
           </button>
@@ -149,11 +156,21 @@ function GeneralSection({
       </label>
       <label className="grid gap-1">
         <span>Puesto</span>
-        <input className="border p-2 rounded" name="position" value={form.position} onChange={onChange} />
+        <input
+          className="border p-2 rounded"
+          name="position"
+          value={form.position}
+          onChange={onChange}
+        />
       </label>
       <label className="grid gap-1">
         <span>Jornada</span>
-        <select className="border p-2 rounded" name="work_shift" value={form.work_shift} onChange={onChange}>
+        <select
+          className="border p-2 rounded"
+          name="work_shift"
+          value={form.work_shift}
+          onChange={onChange}
+        >
           <option value="">Selecciona…</option>
           <option value="diurna">Diurna</option>
           <option value="nocturna">Nocturna</option>
@@ -162,11 +179,22 @@ function GeneralSection({
       </label>
       <label className="grid gap-1">
         <span>Fecha inicio</span>
-        <input type="date" className="border p-2 rounded" name="start_date" value={form.start_date} onChange={onChange} />
+        <input
+          type="date"
+          className="border p-2 rounded"
+          name="start_date"
+          value={form.start_date}
+          onChange={onChange}
+        />
       </label>
       <label className="grid gap-1">
         <span>Estado</span>
-        <select className="border p-2 rounded" name="status" value={form.status} onChange={onChange}>
+        <select
+          className="border p-2 rounded"
+          name="status"
+          value={form.status}
+          onChange={onChange}
+        >
           <option value="activo">Activo</option>
           <option value="inactivo">Inactivo</option>
           <option value="suspendido">Suspendido</option>
@@ -184,47 +212,35 @@ function GeneralSection({
 function HoursSection({ empId }: { empId: number }) {
   const [from, setFrom] = useState(dayjs().startOf("month").format("YYYY-MM-DD"));
   const [to, setTo] = useState(dayjs().endOf("month").format("YYYY-MM-DD"));
-  const [loading, setLoading] = useState(false);
-  const [totalHours, setTotalHours] = useState(0);
 
-  const fetchHours = async () => {
-    try {
-      setLoading(true);
-      const res = await api.get("/metrics/hours", { params: { employee_id: empId, from, to } });
-      const data = res.data as { total_hours?: number } | undefined;
-      setTotalHours(Number(data?.total_hours ?? 0));
-    } catch (err) {
-      console.error(err);
-      alert("No se pudo cargar horas");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchHours();
-  }, []);
+  // Hook que llama a fetchEmployeeHours y devuelve {data, loading, error}
+  const { data, loading, error } = useEmployeeHours(empId, from, to);
 
   return (
     <div className="grid gap-3">
       <div className="flex gap-2 items-end">
         <label className="grid">
           <span>Desde</span>
-          <input type="date" className="border p-2 rounded" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <input
+            type="date"
+            className="border p-2 rounded"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+          />
         </label>
         <label className="grid">
           <span>Hasta</span>
-          <input type="date" className="border p-2 rounded" value={to} onChange={(e) => setTo(e.target.value)} />
+          <input
+            type="date"
+            className="border p-2 rounded"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+          />
         </label>
-        <button onClick={fetchHours} className="bg-gray-900 text-white px-4 py-2 rounded">
-          {loading ? "Cargando…" : "Aplicar"}
-        </button>
+        {/* No hace falta botón “Aplicar”: cambiar fechas refresca el hook */}
       </div>
 
-      <div className="p-4 border rounded">
-        <div className="text-sm text-gray-500">Total de horas en el rango</div>
-        <div className="text-3xl font-semibold">{totalHours.toFixed(2)} h</div>
-      </div>
+      <EmployeeHoursCard result={data} loading={loading} error={error} />
     </div>
   );
 }
@@ -238,12 +254,12 @@ function PunchesSection({ empId }: { empId: number }) {
   const [meta, setMeta] = useState({ current_page: 1, last_page: 1 });
   const [loading, setLoading] = useState(false);
 
-    // --- controles para export ---
+  // --- controles para export ---
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [exporting, setExporting] = useState(false);
 
-    // mapea el status de la UI al que espera el backend
+  // mapea el status de la UI al que espera el backend
   const statusApi =
     status === "ok" ? "completo" :
     status === "incompleta" ? "pendiente_salida" :
@@ -282,8 +298,6 @@ function PunchesSection({ empId }: { empId: number }) {
     fetchEntries(1);
   };
 
-
-  
   // Exportar CSV por empleado
   const handleExportCSV = async () => {
     try {
@@ -306,18 +320,18 @@ function PunchesSection({ empId }: { empId: number }) {
         { responseType: "blob" }
       );
 
-  const ff = (s?: string|null) => (s && s.trim()) || "all";
-    const fname = `marcaciones_emp${empId}_${ff(params.get("from"))}_${ff(params.get("to"))}_${statusApi || "todos"}.csv`;
-    downloadBlob(res.data, fname);
+      const ff = (s?: string | null) => (s && s.trim()) || "all";
+      const fname = `marcaciones_emp${empId}_${ff(params.get("from"))}_${ff(
+        params.get("to")
+      )}_${statusApi || "todos"}.csv`;
+      downloadBlob(res.data, fname);
     } catch (e: any) {
       console.error(e);
       alert(e?.response?.data?.message || "No se pudo exportar");
     } finally {
       setExporting(false);
     }
-  }
-
-  
+  };
 
   // ids para accesibilidad
   const dateId = `date-${empId}`;
@@ -325,7 +339,7 @@ function PunchesSection({ empId }: { empId: number }) {
   const fromId = `from-${empId}`;
   const toId = `to-${empId}`;
 
- return (
+  return (
     <div className="grid gap-4">
       {/* Filtros para la TABLA */}
       <div className="flex flex-wrap gap-2 items-end">
@@ -517,7 +531,4 @@ function Metric({ title, value, loading }: { title: string; value: number; loadi
       <div className="text-3xl font-semibold">{loading ? "…" : `₡${Number(value).toLocaleString()}`}</div>
     </div>
   );
-
- 
 }
-
