@@ -1,8 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../lib/api";
 
 type Errors = Record<string, string[]>;
+
+type Position = {
+  id: number;
+  code: string;
+  name: string;
+  base_hourly_rate: number | string;
+  currency: string;
+};
 
 export default function EmployeeCreatePage() {
   const nav = useNavigate();
@@ -18,22 +26,51 @@ export default function EmployeeCreatePage() {
     position: "",
     hire_date: "",
     status: "active",
+    position_id: undefined as number | undefined,
   });
+
+    // Lista de puestos
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [loadingPositions, setLoadingPositions] = useState(true);
 
   const setField = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    if (name === "position_id") {
+      setForm((prev) => ({ ...prev, position_id: value ? Number(value) : undefined }));
+    } else {
+      setForm((prev) => ({ ...prev, [name]: value }));
+    }
   };
-
+  // Validación mínima cliente
   const validateClient = () => {
     const errs: Errors = {};
     if (!form.first_name.trim()) errs.first_name = ["El nombre es requerido"];
     if (!form.last_name.trim()) errs.last_name = ["El apellido es requerido"];
     if (form.email && !/\S+@\S+\.\S+/.test(form.email)) errs.email = ["Correo inválido"];
     if (form.hire_date && new Date(form.hire_date) > new Date()) errs.hire_date = ["La fecha no puede ser futura"];
+    if (!form.position_id) errs.position_id = ["Selecciona un puesto"];
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
+
+   // Cargar puestos
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const { data } = await api.get("/positions");
+        const list = Array.isArray(data) ? data : data?.data ?? [];
+        if (mounted) setPositions(list);
+      } catch (e) {
+        console.error("No se pudieron cargar los puestos", e);
+      } finally {
+        if (mounted) setLoadingPositions(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  //Enviar
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,6 +87,7 @@ export default function EmployeeCreatePage() {
         position: form.position || undefined,
         hire_date: form.hire_date || undefined,
         status: form.status || "active",
+        position_id: form.position_id, 
       };
       const res = await api.post("/employees", payload);
       const emp = res.data;
@@ -142,23 +180,40 @@ export default function EmployeeCreatePage() {
             )}
           </div>
 
-          <div className="grid">
-            <label className="mb-1" htmlFor="position">Puesto</label>
-            <input
-              id="position"
-              name="position"
-              type="text"
-              className="border p-2 rounded"
-              value={form.position}
-              onChange={setField}
-              autoComplete="organization-title"
-              {...(fieldErr("position")
-                ? { "aria-invalid": true, "aria-describedby": errId("position") }
-                : {})}
-            />
-            {fieldErr("position") && (
-              <span id={errId("position")} className="text-red-600 text-sm" role="alert">
-                {fieldErr("position")}
+             <div className="grid">
+            <span className="mb-1 font-medium">Puesto *</span>
+
+            {loadingPositions && <p className="text-sm text-gray-600">Cargando puestos…</p>}
+
+            {!loadingPositions && positions.length === 0 && (
+              <p className="text-sm text-gray-600">No hay puestos. Crea algunos primero.</p>
+            )}
+
+            {!loadingPositions && positions.length > 0 && (
+              <div role="radiogroup" aria-label="Selecciona un puesto" className="border rounded p-2 max-h-48 overflow-auto">
+                {positions.map((p) => (
+                  <label key={p.id} className="flex items-center gap-2 py-1">
+                    <input
+                      type="radio"
+                      name="position_id"
+                      value={p.id}
+                      checked={form.position_id === p.id}
+                      onChange={setField}
+                      required
+                      {...(fieldErr("position_id")
+                        ? { "aria-invalid": true, "aria-describedby": errId("position_id") }
+                        : {})}
+                    />
+                    <span>
+                      {p.name} 
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+            {fieldErr("position_id") && (
+              <span id={errId("position_id")} className="text-red-600 text-sm" role="alert">
+                {fieldErr("position_id")}
               </span>
             )}
           </div>

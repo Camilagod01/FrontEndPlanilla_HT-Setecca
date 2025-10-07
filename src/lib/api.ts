@@ -110,6 +110,55 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 
 export default api;
 
+
+/* ============================================================
+   =============== Tipos básicos de dominio ===================
+   ============================================================ */
+
+export interface Position {
+  id: number;
+  name: string;
+}
+
+export interface Employee {
+  id: number;
+  code?: string;
+  first_name: string;
+  last_name: string;
+  email?: string | null;
+  position_id?: number | null;
+  position?: Position | null; // ← para mostrar position.name
+  // agrega aquí otros campos que uses (status, hire_date, etc.)
+}
+
+/* ============================================================
+   ===== Endpoints para Positions / Employee Position =========
+   ============================================================ */
+
+// Lista de puestos (para el <select>)
+export async function listPositions(): Promise<Position[]> {
+  const { data } = await api.get<Position[]>("/positions");
+  return data;
+}
+
+// Traer un empleado (y su relación position)
+export async function getEmployee(employeeId: number): Promise<Employee> {
+  // Si en backend usas include=position, déjalo; si no, el controlador ya hace load('position')
+  const { data } = await api.get<Employee>(`/employees/${employeeId}?include=position`);
+  return data;
+}
+
+// Actualizar SOLO el puesto del empleado
+export async function updateEmployeePosition(
+  employeeId: number,
+  position_id: number | null
+): Promise<Employee> {
+  // Ruta dedicada que sugerimos en Laravel: PATCH /employees/:id/position
+  const { data } = await api.patch<Employee>(`/employees/${employeeId}/position`, { position_id });
+  return data; // viene con .position cargado para refrescar la UI
+}
+
+
 /* ============================================================
    =============== Tipos para /metrics/hours ==================
    ============================================================ */

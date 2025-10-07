@@ -1,14 +1,20 @@
 import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import dayjs from "dayjs";
-import api from "../lib/api"; // OJO: estás en /pages → sube a /lib
-import {EmployeeHoursCard} from "../pages/EmployeeHoursCard";
-import { useEmployeeHours } from "../lib/useEmployeeHours";
 
+import api, { updateEmployeePosition } from "../lib/api";
+
+import { EmployeeHoursCard } from "../pages/EmployeeHoursCard";
+import { useEmployeeHours } from "../lib/useEmployeeHours";
 import { downloadBlob } from "../lib/downloadBlob";
 
-
-
+interface Position {
+  id: number;
+  code: string;
+  name: string;
+  base_hourly_rate: number | string;
+  currency: string; // "CRC" | "USD"
+}
 
 // ===== Tipos mínimos (flexibles para no romper) =====
 type Maybe<T> = T | null | undefined;
@@ -19,11 +25,12 @@ interface Employee {
   last_name: string;
   code?: string;
   email?: string;
-  position?: string;
+  position_id?: number | null;
+  position?: Position | null;
   department?: string;
-  work_shift?: string;   // jornada
-  start_date?: string;   // YYYY-MM-DD
-  status?: string;       // activo|inactivo|suspendido|...
+  work_shift?: string; // jornada
+  start_date?: string; // YYYY-MM-DD
+  status?: string; // activo|inactivo|suspendido|...
 }
 
 interface TimeEntry {
@@ -49,8 +56,11 @@ export default function EmployeeProfilePage() {
     (async () => {
       try {
         setLoadingEmp(true);
-        const res = await api.get(`/employees/${id}`);
-        if (alive) setEmp(res.data as Employee);
+        // ✅ CAMBIO: volvemos a usar api.get y pedimos include=position
+        const res = await api.get(`/employees/${id}`, {
+          params: { include: "position" },
+        });
+        if (alive) setEmp((res.data?.data ?? res.data) as Employee);
       } catch (err) {
         console.error(err);
         alert("No se pudo cargar el empleado");
@@ -69,10 +79,11 @@ export default function EmployeeProfilePage() {
   return (
     <div className="p-4 max-w-6xl mx-auto">
       <h1 className="text-2xl font-semibold mb-1">
-        Perfil: {emp.first_name} {emp.last_name} {emp.code ? `( #${emp.code} )` : ""}
+        Perfil: {emp.first_name} {emp.last_name}{" "}
+        {emp.code ? `( #${emp.code} )` : ""}
       </h1>
       <div className="text-sm text-gray-600 mb-4">
-        {[emp.department, emp.position].filter(Boolean).join(" · ")}
+        {[emp.department, emp.position?.name].filter(Boolean).join(" · ")}
       </div>
 
       <div className="flex gap-2 mb-6">
@@ -102,8 +113,12 @@ export default function EmployeeProfilePage() {
       {tab === "hours" && <HoursSection empId={Number(id)} />}
       {tab === "punches" && <PunchesSection empId={Number(id)} />}
       {tab === "finance" && <FinanceSection empId={Number(id)} />}
-      {tab === "vacations" && <Placeholder text="Vacaciones (pendiente de diseño y API)" />}
-      {tab === "bonus" && <Placeholder text="Aguinaldo (pendiente de diseño y API)" />}
+      {tab === "vacations" && (
+        <Placeholder text="Vacaciones (pendiente de diseño y API)" />
+      )}
+      {tab === "bonus" && (
+        <Placeholder text="Aguinaldo (pendiente de diseño y API)" />
+      )}
     </div>
   );
 }
@@ -122,47 +137,156 @@ function GeneralSection({
 }) {
   const [form, setForm] = useState({
     email: emp.email ?? "",
-    position: emp.position ?? "",
     work_shift: emp.work_shift ?? "",
     start_date: emp.start_date ?? "",
     status: emp.status ?? "activo",
   });
   const [saving, setSaving] = useState(false);
 
-  const onChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  // === Edición de puesto ===
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [selectedPos, setSelectedPos] = useState<number | "">(
+    emp.position_id ?? ""
+  );
+  const [savingPos, setSavingPos] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.get<Position[]>("/positions");
+        setPositions((res.data as any) ?? []);
+
+        setSelectedPos(emp.position_id ?? "");
+      } catch (e) {
+        console.error(e);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emp.id]);
+
+  const onChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
   const onSave = async () => {
-    try {
-      setSaving(true);
-      const res = await api.patch(`/employees/${emp.id}`, form);
-      onUpdated(res.data as Employee);
-      alert("Cambios guardados");
-    } catch (err) {
-      console.error(err);
-      alert("No se pudo guardar");
-    } finally {
-      setSaving(false);
+  try {
+    setSaving(true);
+    await api.put(`/employees/${emp.id}`, form);            // ← aquí
+    const rereq = await api.get(`/employees/${emp.id}`, { params: { include: "position" } });
+    const fresh = (rereq.data as any)?.data ?? rereq.data;
+    onUpdated(fresh as Employee);
+    alert("Cambios guardados");
+  } catch (err) {
+    console.error(err);
+    alert("No se pudo guardar");
+  } finally {
+    setSaving(false);
+  }
+};
+
+const onSavePosition = async () => {
+  try {
+    setSavingPos(true);
+
+    // PATCH al endpoint dedicado del backend
+    const payload = {
+      position_id: selectedPos === "" ? null : Number(selectedPos),
+    };
+
+    const up = await api.patch(`/employees/${emp.id}/position`, payload);
+
+    // Si el backend devuelve el empleado actualizado con .position, úsalo.
+    // Si no, relee con include=position para refrescar la UI.
+    const fresh = (up.data as any) ?? null;
+    if (fresh && (fresh.position || fresh.position_id !== undefined)) {
+      onUpdated(fresh as Employee);
+    } else {
+      const rereq = await api.get(`/employees/${emp.id}`, { params: { include: "position" } });
+      onUpdated(((rereq.data as any)?.data ?? rereq.data) as Employee);
     }
-  };
+
+    alert("Puesto actualizado");
+  } catch (e: any) {
+    console.error("update position error", e?.response?.status, e?.response?.data);
+    alert(e?.response?.data?.message || "No se pudo actualizar el puesto");
+  } finally {
+    setSavingPos(false);
+  }
+};
+
+
+
+  const salary =
+    emp.position?.base_hourly_rate != null
+      ? Number(emp.position.base_hourly_rate)
+      : undefined;
 
   return (
-    <div className="grid gap-4 max-w-xl">
+    <div className="grid gap-4 max-w-2xl">
+      {/* Tarjeta de puesto y salario — con editor */}
+      <div className="border rounded p-3">
+        <h3 className="font-medium mb-2">Puesto y salario</h3>
+
+        {/* Selector de puesto */}
+        <div className="flex flex-wrap items-end gap-2 mb-3">
+          <label className="grid">
+            <span className="text-sm">Puesto</span>
+            <select
+              className="border p-2 rounded min-w-[240px]"
+              value={selectedPos}
+              onChange={(e) =>
+                setSelectedPos(
+                  e.target.value === "" ? "" : Number(e.target.value)
+                )
+              }
+            >
+              <option value="">(sin puesto)</option>
+              {positions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} {p.code ? `(${p.code})` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="px-3 py-2 border rounded disabled:opacity-50"
+            disabled={savingPos || (emp.position_id ?? "") === selectedPos}
+            onClick={onSavePosition}
+          >
+            {savingPos ? "Guardando…" : "Guardar puesto"}
+          </button>
+        </div>
+
+        <p>
+          <strong>Puesto:</strong>{" "}
+          {emp.position?.name
+            ? `${emp.position.name}${
+                emp.position.code ? ` (${emp.position.code})` : ""
+              }`
+            : "—"}
+        </p>
+        <p>
+          <strong>Salario base por hora:</strong>{" "}
+          {salary != null
+            ? `₡${salary.toLocaleString()} ${emp.position?.currency ?? ""}`
+            : "—"}
+        </p>
+      </div>
+
+      {/* Campos editables */}
       <label className="grid gap-1">
         <span>Email</span>
-        <input className="border p-2 rounded" name="email" value={form.email} onChange={onChange} />
-      </label>
-      <label className="grid gap-1">
-        <span>Puesto</span>
         <input
           className="border p-2 rounded"
-          name="position"
-          value={form.position}
+          name="email"
+          value={form.email}
           onChange={onChange}
         />
       </label>
+
       <label className="grid gap-1">
         <span>Jornada</span>
         <select
@@ -177,6 +301,7 @@ function GeneralSection({
           <option value="mixta">Mixta</option>
         </select>
       </label>
+
       <label className="grid gap-1">
         <span>Fecha inicio</span>
         <input
@@ -187,6 +312,7 @@ function GeneralSection({
           onChange={onChange}
         />
       </label>
+
       <label className="grid gap-1">
         <span>Estado</span>
         <select
@@ -201,7 +327,11 @@ function GeneralSection({
         </select>
       </label>
 
-      <button disabled={saving} onClick={onSave} className="bg-blue-600 text-white px-4 py-2 rounded">
+      <button
+        disabled={saving}
+        onClick={onSave}
+        className="bg-blue-600 text-white px-4 py-2 rounded"
+      >
         {saving ? "Guardando…" : "Guardar cambios"}
       </button>
     </div>
@@ -210,7 +340,9 @@ function GeneralSection({
 
 /* ===== (b) Horas — GET /api/metrics/hours?employee_id&from&to ===== */
 function HoursSection({ empId }: { empId: number }) {
-  const [from, setFrom] = useState(dayjs().startOf("month").format("YYYY-MM-DD"));
+  const [from, setFrom] = useState(
+    dayjs().startOf("month").format("YYYY-MM-DD")
+  );
   const [to, setTo] = useState(dayjs().endOf("month").format("YYYY-MM-DD"));
 
   // Hook que llama a fetchEmployeeHours y devuelve {data, loading, error}
@@ -261,15 +393,24 @@ function PunchesSection({ empId }: { empId: number }) {
 
   // mapea el status de la UI al que espera el backend
   const statusApi =
-    status === "ok" ? "completo" :
-    status === "incompleta" ? "pendiente_salida" :
-    status === "anomala" ? "anómala" : "";
+    status === "ok"
+      ? "completo"
+      : status === "incompleta"
+      ? "pendiente_salida"
+      : status === "anomala"
+      ? "anómala"
+      : "";
 
   const fetchEntries = async (p = page) => {
     try {
       setLoading(true);
       const res = await api.get("/time-entries", {
-        params: { employee_id: empId, date: date || undefined, status: status || undefined, page: p },
+        params: {
+          employee_id: empId,
+          date: date || undefined,
+          status: status || undefined,
+          page: p,
+        },
       });
 
       const d = res.data as any;
@@ -278,7 +419,10 @@ function PunchesSection({ empId }: { empId: number }) {
         setMeta({ current_page: 1, last_page: 1 });
       } else {
         setRows((d?.data ?? []) as TimeEntry[]);
-        setMeta({ current_page: d?.current_page ?? p, last_page: d?.last_page ?? 1 });
+        setMeta({
+          current_page: d?.current_page ?? p,
+          last_page: d?.last_page ?? 1,
+        });
       }
     } catch (err) {
       console.error(err);
@@ -306,7 +450,7 @@ function PunchesSection({ empId }: { empId: number }) {
 
       // usar from/to del bloque de export; si no, cae al filtro 'date' de la tabla
       if (from) params.set("from", from);
-      if (to)   params.set("to", to);
+      if (to) params.set("to", to);
       if (!from && !to && date) {
         params.set("from", date);
         params.set("to", date);
@@ -333,12 +477,7 @@ function PunchesSection({ empId }: { empId: number }) {
     }
   };
 
-  // ids para accesibilidad
-  const dateId = `date-${empId}`;
-  const statusId = `status-${empId}`;
-  const fromId = `from-${empId}`;
-  const toId = `to-${empId}`;
-
+  // ⚠️ Quitamos IDs para evitar “IDs of active elements must be unique”
   return (
     <div className="grid gap-4">
       {/* Filtros para la TABLA */}
@@ -346,7 +485,6 @@ function PunchesSection({ empId }: { empId: number }) {
         <label className="grid">
           <span>Fecha (tabla)</span>
           <input
-            id={dateId}
             type="date"
             className="border p-2 rounded"
             value={date}
@@ -357,7 +495,6 @@ function PunchesSection({ empId }: { empId: number }) {
         <label className="grid">
           <span>Status</span>
           <select
-            id={statusId}
             className="border p-2 rounded"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
@@ -369,7 +506,10 @@ function PunchesSection({ empId }: { empId: number }) {
           </select>
         </label>
 
-        <button onClick={applyFilters} className="bg-gray-900 text-white px-4 py-2 rounded">
+        <button
+          onClick={applyFilters}
+          className="bg-gray-900 text-white px-4 py-2 rounded"
+        >
           {loading ? "Buscando…" : "Filtrar"}
         </button>
       </div>
@@ -379,7 +519,6 @@ function PunchesSection({ empId }: { empId: number }) {
         <label className="grid">
           <span>Desde (export)</span>
           <input
-            id={fromId}
             type="date"
             className="border p-2 rounded"
             value={from}
@@ -390,7 +529,6 @@ function PunchesSection({ empId }: { empId: number }) {
         <label className="grid">
           <span>Hasta (export)</span>
           <input
-            id={toId}
             type="date"
             className="border p-2 rounded"
             value={to}
@@ -481,7 +619,11 @@ function PunchesSection({ empId }: { empId: number }) {
 /* ===== (d) Finanzas — advances, loans, garnishments ===== */
 function FinanceSection({ empId }: { empId: number }) {
   const [loading, setLoading] = useState(false);
-  const [totals, setTotals] = useState({ advances: 0, loans: 0, garnishments: 0 });
+  const [totals, setTotals] = useState({
+    advances: 0,
+    loans: 0,
+    garnishments: 0,
+  });
 
   const fetchFinance = async () => {
     try {
@@ -493,16 +635,24 @@ function FinanceSection({ empId }: { empId: number }) {
       ]);
 
       const sum = (data: any, pick: (x: any) => number) => {
-        if (Array.isArray(data)) return data.reduce((a, b) => a + (pick(b) || 0), 0);
+        if (Array.isArray(data))
+          return data.reduce((a, b) => a + (pick(b) || 0), 0);
         if (typeof data?.total === "number") return data.total;
         return 0;
       };
 
       const advancesSum = sum(adv.data, (x) => x.amount ?? x.total ?? 0);
-      const loansSum = sum(loans.data, (x) => x.balance ?? x.amount ?? x.total ?? 0);
+      const loansSum = sum(
+        loans.data,
+        (x) => x.balance ?? x.amount ?? x.total ?? 0
+      );
       const garnSum = sum(garn.data, (x) => x.amount ?? x.total ?? 0);
 
-      setTotals({ advances: advancesSum, loans: loansSum, garnishments: garnSum });
+      setTotals({
+        advances: advancesSum,
+        loans: loansSum,
+        garnishments: garnSum,
+      });
     } catch (err) {
       console.error(err);
       alert("No se pudo cargar finanzas");
@@ -524,11 +674,21 @@ function FinanceSection({ empId }: { empId: number }) {
   );
 }
 
-function Metric({ title, value, loading }: { title: string; value: number; loading: boolean }) {
+function Metric({
+  title,
+  value,
+  loading,
+}: {
+  title: string;
+  value: number;
+  loading: boolean;
+}) {
   return (
     <div className="p-4 border rounded">
       <div className="text-sm text-gray-500">{title}</div>
-      <div className="text-3xl font-semibold">{loading ? "…" : `₡${Number(value).toLocaleString()}`}</div>
+      <div className="text-3xl font-semibold">
+        {loading ? "…" : `₡${Number(value).toLocaleString()}`}
+      </div>
     </div>
   );
 }

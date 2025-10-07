@@ -119,7 +119,8 @@ export default function Employees() {
                     <td className="px-4 py-2">{e.code ?? "-"}</td>
                     
                     <td className="px-4 py-2">{[e.first_name, e.last_name].filter(Boolean).join(" ") || "-"}</td>
-                    <td className="px-4 py-2">{e.position ?? "-"}</td>
+                    <td className="px-4 py-2">{e.position?.name ?? e.position_name ?? "-"}</td>
+
                     <td className="px-4 py-2">{e.status ?? "active"}</td>
                   </tr>
                 ))}
