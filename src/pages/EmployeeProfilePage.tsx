@@ -110,7 +110,14 @@ export default function EmployeeProfilePage() {
       </div>
 
       {tab === "general" && <GeneralSection emp={emp} onUpdated={setEmp} />}
-      {tab === "hours" && <HoursSection empId={Number(id)} />}
+      {tab === "hours" && (
+  <HoursSection
+    empId={Number(id)}
+    hourlyRate={Number(emp.position?.base_hourly_rate ?? 0)}
+    currency={emp.position?.currency ?? "CRC"}
+  />
+)}
+
       {tab === "punches" && <PunchesSection empId={Number(id)} />}
       {tab === "finance" && <FinanceSection empId={Number(id)} />}
       {tab === "vacations" && (
@@ -191,15 +198,14 @@ const onSavePosition = async () => {
   try {
     setSavingPos(true);
 
-    // PATCH al endpoint dedicado del backend
+    
     const payload = {
       position_id: selectedPos === "" ? null : Number(selectedPos),
     };
 
     const up = await api.patch(`/employees/${emp.id}/position`, payload);
 
-    // Si el backend devuelve el empleado actualizado con .position, úsalo.
-    // Si no, relee con include=position para refrescar la UI.
+  
     const fresh = (up.data as any) ?? null;
     if (fresh && (fresh.position || fresh.position_id !== undefined)) {
       onUpdated(fresh as Employee);
@@ -339,17 +345,102 @@ const onSavePosition = async () => {
 }
 
 /* ===== (b) Horas — GET /api/metrics/hours?employee_id&from&to ===== */
-function HoursSection({ empId }: { empId: number }) {
-  const [from, setFrom] = useState(
-    dayjs().startOf("month").format("YYYY-MM-DD")
-  );
+function HoursSection({
+  empId,
+  hourlyRate,
+  currency = "CRC",
+}: {
+  empId: number;
+  hourlyRate: number;
+  currency?: string;
+}) {
+  const [from, setFrom] = useState(dayjs().startOf("month").format("YYYY-MM-DD"));
   const [to, setTo] = useState(dayjs().endOf("month").format("YYYY-MM-DD"));
 
-  // Hook que llama a fetchEmployeeHours y devuelve {data, loading, error}
   const { data, loading, error } = useEmployeeHours(empId, from, to);
+
+  // Helpers
+  const toNum = (v: any, def = 0) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : def;
+  };
+  const pickNum = (...vals: any[]) => {
+    for (const v of vals) {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+    return 0;
+  };
+
+  // Normaliza estructura (algunos backends anidan en .data/.result)
+  const raw: any = data ?? {};
+  const d: any = raw?.data ?? raw?.result ?? raw;
+
+  // Días (para sumar horas si no viene total)
+  const daysArr: any[] =
+    Array.isArray(d?.days) ? d.days :
+    Array.isArray(d?.data?.days) ? d.data.days : [];
+
+  const sumDays = daysArr.reduce((acc, it) => acc + toNum(it?.hours ?? it?.h, 0), 0);
+
+  // Total de horas
+  const total = toNum(d?.total_hours ?? d?.totalHours ?? d?.total, sumDays);
+
+  // Overtime: intentar muchas formas de clave
+  const ot: any = d?.overtime ?? d?.ot ?? {};
+
+  // Umbral diario para fallback (por defecto 8h)
+  const dailyThreshold = toNum(
+    ot?.daily_threshold ?? d?.rules?.daily_base ?? d?.rules?.dailyLimit,
+    8
+  );
+
+  // Horas extra (día) – intenta varias claves; si no, calcula desde days con el umbral
+  let dailyOH = pickNum(
+    ot?.daily_hours, ot?.dailyHours, ot?.daily,
+    ot?.day, ot?.day_hours, ot?.dayHours,
+    ot?.daily?.hours, ot?.day?.hours,
+    d?.extra_day, d?.extraDay
+  );
+  if (!dailyOH && daysArr.length) {
+    dailyOH = daysArr.reduce((acc, it) => {
+      const h = toNum(it?.hours ?? it?.h, 0);
+      return acc + Math.max(0, h - dailyThreshold);
+    }, 0);
+  }
+
+  // Horas extra (semana)
+  const weeklyOH = pickNum(
+    ot?.weekly_hours, ot?.weeklyHours, ot?.weekly,
+    ot?.week, ot?.week_hours, ot?.weekHours,
+    ot?.weekly?.hours, ot?.week?.hours,
+    d?.extra_week, d?.extraWeek
+  );
+
+  // Multiplicadores (defaults razonables si no llegan)
+  const mult: any = ot?.multipliers ?? ot?.mult ?? {};
+  const mDaily  = toNum(mult?.daily ?? mult?.dailyMultiplier, 1.5);
+  const mWeekly = toNum(mult?.weekly ?? mult?.weeklyMultiplier, 2);
+
+  // Horas regulares (no negativas)
+  const regularHours = Math.max(0, total - dailyOH - weeklyOH);
+
+  // Cálculo de salario
+  const rate       = toNum(hourlyRate, 0);
+  const payRegular = regularHours * rate;
+  const payDailyOT = dailyOH  * rate * mDaily;
+  const payWeeklyOT= weeklyOH * rate * mWeekly;
+  const payTotal   = payRegular + payDailyOT + payWeeklyOT;
+
+  const money = (n: number) =>
+    `${currency === "USD" ? "$" : "₡"}${n.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} ${currency}`;
 
   return (
     <div className="grid gap-3">
+      {/* Filtros de rango */}
       <div className="flex gap-2 items-end">
         <label className="grid">
           <span>Desde</span>
@@ -369,13 +460,53 @@ function HoursSection({ empId }: { empId: number }) {
             onChange={(e) => setTo(e.target.value)}
           />
         </label>
-        {/* No hace falta botón “Aplicar”: cambiar fechas refresca el hook */}
       </div>
 
+      {/* Card existente de horas */}
       <EmployeeHoursCard result={data} loading={loading} error={error} />
+
+      {/* Salario estimado según puesto */}
+      <div className="mt-4 border rounded p-3">
+        <h3 className="font-medium mb-2">Salario estimado</h3>
+
+        {rate <= 0 ? (
+          <div className="text-sm text-red-700">
+            Este empleado no tiene definida una tarifa por hora en su puesto.
+          </div>
+        ) : (
+          <div className="text-sm space-y-1">
+            <div>
+              <strong>Tarifa:</strong> {money(rate)} / hora
+            </div>
+            <div className="mt-2">
+              <strong>Horas del período:</strong> {total.toFixed(2)} h
+            </div>
+            <ul className="list-disc pl-5">
+              <li>
+                Regulares: {regularHours.toFixed(2)} h → {money(payRegular)}
+              </li>
+              <li>
+                Extra (día): {dailyOH.toFixed(2)} h × {mDaily} → {money(payDailyOT)}
+              </li>
+              <li>
+                Extra (semana): {weeklyOH.toFixed(2)} h × {mWeekly} → {money(payWeeklyOT)}
+              </li>
+            </ul>
+            <div className="mt-2 text-lg">
+              <strong>Total estimado: {money(payTotal)}</strong>
+            </div>
+            <div className="text-xs text-gray-600 mt-1">
+              
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
+
+
+
 
 /* ===== (c) Marcaciones — GET /api/time-entries?employee_id=&date=&status=&page= ===== */
 function PunchesSection({ empId }: { empId: number }) {
