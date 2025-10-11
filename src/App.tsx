@@ -4,11 +4,13 @@ import Dashboard from "./pages/Dashboard";
 import Employees from "./pages/Employees";
 import EmployeeProfilePage from "./pages/EmployeeProfilePage";
 import EmployeeCreatePage from "./pages/EmployeeCreatePage";
-import ProtectedRoute from "./routes/ProtectedRoute"; // ya lo tienes
-import Layout from "./components/Layout";             // lo creamos en el paso 3
-import TimeEntries from './pages/TimeEntriesPage';
+import ProtectedRoute from "./routes/ProtectedRoute";
+import Layout from "./components/Layout";
+import TimeEntries from "./pages/TimeEntriesPage";
+import PositionsPage from "./pages/PositionsPage";
+import AttendanceReportPage from "./pages/AttendanceReportPage";
 
-export default function App() { 
+export default function App() {
   return (
     <BrowserRouter>
       <Routes>
@@ -27,8 +29,14 @@ export default function App() {
             <Route path="/employees/new" element={<EmployeeCreatePage />} />
             <Route path="/employees/:id" element={<EmployeeProfilePage />} />
 
-            {/* (opcional) Lista de pruebas */}
+            {/* Puestos */}
+            <Route path="/positions" element={<PositionsPage />} />
+
+            {/* Marcaciones */}
             <Route path="/time-entries" element={<TimeEntries />} />
+
+            {/* Reportes */}
+            <Route path="/reports/attendance" element={<AttendanceReportPage />} />
           </Route>
         </Route>
 

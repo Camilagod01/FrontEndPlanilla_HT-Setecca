@@ -1,20 +1,12 @@
 import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import dayjs from "dayjs";
-
-import api, { updateEmployeePosition } from "../lib/api";
-
+import api from "../lib/api";
 import { EmployeeHoursCard } from "../pages/EmployeeHoursCard";
 import { useEmployeeHours } from "../lib/useEmployeeHours";
 import { downloadBlob } from "../lib/downloadBlob";
-
-interface Position {
-  id: number;
-  code: string;
-  name: string;
-  base_hourly_rate: number | string;
-  currency: string; // "CRC" | "USD"
-}
+import type { Position } from "../types/position";
+import SickLeavesTab from "@/components/SickLeavesTab";
 
 // ===== Tipos mínimos (flexibles para no romper) =====
 type Maybe<T> = T | null | undefined;
@@ -30,7 +22,7 @@ interface Employee {
   department?: string;
   work_shift?: string; // jornada
   start_date?: string; // YYYY-MM-DD
-  status?: string; // activo|inactivo|suspendido|...
+  status?: string; // active|inactive (backend)
 }
 
 interface TimeEntry {
@@ -42,13 +34,45 @@ interface TimeEntry {
   source?: string | null;
 }
 
+/** ==== Helper: calcula tarifa por hora a partir del puesto ====
+ * Regla:
+ *  - Si salary_type === 'hourly', usar default_salary_amount; si viene vacío, caer a base_hourly_rate (legacy).
+ *  - Si salary_type === 'monthly', no mostramos tarifa por hora (rate=0) a menos que decidas una fórmula.
+ */
+function getHourlyFromPosition(
+  p?: Position | null
+): { rate: number; currency: string; monthly?: number } {
+  const currency = p?.default_salary_currency ?? p?.currency ?? "CRC";
+  if (!p) return { rate: 0, currency };
+
+  // 1) Si es hourly y viene default_salary_amount -> úsalo
+  if (p.salary_type === "hourly") {
+    const r = Number(p.default_salary_amount ?? p.base_hourly_rate);
+    return { rate: Number.isFinite(r) && r > 0 ? r : 0, currency };
+  }
+
+  // 2) Si existe base_hourly_rate (legacy), úsalo aunque salary_type sea monthly
+  const legacy = Number(p.base_hourly_rate);
+  if (Number.isFinite(legacy) && legacy > 0) return { rate: legacy, currency };
+
+  // 3) Si es monthly, convierte a hora con un divisor estándar
+  const monthly = Number(p.default_salary_amount);
+  if (p.salary_type === "monthly" && Number.isFinite(monthly) && monthly > 0) {
+    const HOURS_PER_MONTH = 173.33; // 8h * 5d * 4.333w
+    const derived = monthly / HOURS_PER_MONTH;
+    return { rate: derived, currency, monthly };
+  }
+
+  return { rate: 0, currency };
+}
+
 // ===== Página principal =====
 export default function EmployeeProfilePage() {
   const { id } = useParams<{ id: string }>();
   const [emp, setEmp] = useState<Maybe<Employee>>(null);
   const [loadingEmp, setLoadingEmp] = useState<boolean>(true);
   const [tab, setTab] = useState<
-    "general" | "hours" | "punches" | "finance" | "vacations" | "bonus"
+    "general" | "hours" | "sick" | "punches" | "finance" | "vacations" | "bonus"
   >("general");
 
   useEffect(() => {
@@ -56,10 +80,7 @@ export default function EmployeeProfilePage() {
     (async () => {
       try {
         setLoadingEmp(true);
-        // ✅ CAMBIO: volvemos a usar api.get y pedimos include=position
-        const res = await api.get(`/employees/${id}`, {
-          params: { include: "position" },
-        });
+        const res = await api.get(`/employees/${id}`, { params: { include: "position" } });
         if (alive) setEmp((res.data?.data ?? res.data) as Employee);
       } catch (err) {
         console.error(err);
@@ -76,11 +97,12 @@ export default function EmployeeProfilePage() {
   if (loadingEmp) return <div className="p-4">Cargando empleado…</div>;
   if (!emp) return <div className="p-4">No se encontró el empleado.</div>;
 
+  const { rate: hourlyRate, currency: hourlyCurrency } = getHourlyFromPosition(emp.position);
+
   return (
     <div className="p-4 max-w-6xl mx-auto">
       <h1 className="text-2xl font-semibold mb-1">
-        Perfil: {emp.first_name} {emp.last_name}{" "}
-        {emp.code ? `( #${emp.code} )` : ""}
+        Perfil: {emp.first_name} {emp.last_name} {emp.code ? `( #${emp.code} )` : ""}
       </h1>
       <div className="text-sm text-gray-600 mb-4">
         {[emp.department, emp.position?.name].filter(Boolean).join(" · ")}
@@ -91,6 +113,7 @@ export default function EmployeeProfilePage() {
           [
             ["general", "Datos generales"],
             ["hours", "Horas laboradas"],
+            ["sick", "Incapacidades"],
             ["punches", "Marcaciones"],
             ["finance", "Finanzas"],
             ["vacations", "Vacaciones"],
@@ -100,9 +123,7 @@ export default function EmployeeProfilePage() {
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`px-3 py-2 rounded ${
-              tab === key ? "bg-black text-white" : "bg-gray-100"
-            }`}
+            className={`px-3 py-2 rounded ${tab === key ? "bg-black text-white" : "bg-gray-100"}`}
           >
             {label}
           </button>
@@ -110,22 +131,16 @@ export default function EmployeeProfilePage() {
       </div>
 
       {tab === "general" && <GeneralSection emp={emp} onUpdated={setEmp} />}
-      {tab === "hours" && (
-  <HoursSection
-    empId={Number(id)}
-    hourlyRate={Number(emp.position?.base_hourly_rate ?? 0)}
-    currency={emp.position?.currency ?? "CRC"}
-  />
-)}
 
+      {tab === "hours" && (
+        <HoursSection empId={Number(id)} hourlyRate={hourlyRate} currency={hourlyCurrency} />
+      )}
+
+      {tab === "sick" && <SickLeavesTab employeeId={emp.id} />}
       {tab === "punches" && <PunchesSection empId={Number(id)} />}
       {tab === "finance" && <FinanceSection empId={Number(id)} />}
-      {tab === "vacations" && (
-        <Placeholder text="Vacaciones (pendiente de diseño y API)" />
-      )}
-      {tab === "bonus" && (
-        <Placeholder text="Aguinaldo (pendiente de diseño y API)" />
-      )}
+      {tab === "vacations" && <Placeholder text="Vacaciones (pendiente de diseño y API)" />}
+      {tab === "bonus" && <Placeholder text="Aguinaldo (pendiente de diseño y API)" />}
     </div>
   );
 }
@@ -134,7 +149,7 @@ function Placeholder({ text }: { text: string }) {
   return <div className="p-4 border rounded bg-yellow-50">{text}</div>;
 }
 
-/* ===== (a) Datos generales — PATCH /api/employees/:id ===== */
+/* ===== (a) Datos generales — PUT /api/employees/:id y PATCH /api/employees/:id/position ===== */
 function GeneralSection({
   emp,
   onUpdated,
@@ -146,23 +161,22 @@ function GeneralSection({
     email: emp.email ?? "",
     work_shift: emp.work_shift ?? "",
     start_date: emp.start_date ?? "",
-    status: emp.status ?? "activo",
+    status: emp.status === "inactive" ? "inactive" : "active",
   });
   const [saving, setSaving] = useState(false);
 
   // === Edición de puesto ===
   const [positions, setPositions] = useState<Position[]>([]);
-  const [selectedPos, setSelectedPos] = useState<number | "">(
-    emp.position_id ?? ""
-  );
+  const [selectedPos, setSelectedPos] = useState<number | "">(emp.position_id ?? "");
   const [savingPos, setSavingPos] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await api.get<Position[]>("/positions");
-        setPositions((res.data as any) ?? []);
-
+        const res = await api.get("/positions", { params: { per_page: 100 } });
+        const raw = res.data as any;
+        const list: Position[] = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : [];
+        setPositions(list);
         setSelectedPos(emp.position_id ?? "");
       } catch (e) {
         console.error(e);
@@ -171,64 +185,69 @@ function GeneralSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [emp.id]);
 
-  const onChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
+  const onChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
   const onSave = async () => {
-  try {
-    setSaving(true);
-    await api.put(`/employees/${emp.id}`, form);            // ← aquí
-    const rereq = await api.get(`/employees/${emp.id}`, { params: { include: "position" } });
-    const fresh = (rereq.data as any)?.data ?? rereq.data;
-    onUpdated(fresh as Employee);
-    alert("Cambios guardados");
-  } catch (err) {
-    console.error(err);
-    alert("No se pudo guardar");
-  } finally {
-    setSaving(false);
-  }
-};
-
-const onSavePosition = async () => {
-  try {
-    setSavingPos(true);
-
-    
-    const payload = {
-      position_id: selectedPos === "" ? null : Number(selectedPos),
-    };
-
-    const up = await api.patch(`/employees/${emp.id}/position`, payload);
-
-  
-    const fresh = (up.data as any) ?? null;
-    if (fresh && (fresh.position || fresh.position_id !== undefined)) {
-      onUpdated(fresh as Employee);
-    } else {
+    try {
+      setSaving(true);
+      await api.put(`/employees/${emp.id}`, form);
       const rereq = await api.get(`/employees/${emp.id}`, { params: { include: "position" } });
-      onUpdated(((rereq.data as any)?.data ?? rereq.data) as Employee);
+      const fresh = (rereq.data as any)?.data ?? rereq.data;
+      onUpdated(fresh as Employee);
+      alert("Cambios guardados");
+    } catch (err: any) {
+      console.error("PUT /employees error", err?.response?.status, err?.response?.data);
+      alert(err?.response?.data?.message ?? "No se pudo guardar");
+    } finally {
+      setSaving(false);
     }
+  };
 
-    alert("Puesto actualizado");
-  } catch (e: any) {
-    console.error("update position error", e?.response?.status, e?.response?.data);
-    alert(e?.response?.data?.message || "No se pudo actualizar el puesto");
-  } finally {
-    setSavingPos(false);
-  }
-};
+  const onSavePosition = async () => {
+    try {
+      setSavingPos(true);
+      const payload = {
+        position_id: selectedPos === "" ? null : Number(selectedPos),
+      };
+      const up = await api.patch(`/employees/${emp.id}/position`, payload);
 
+      const fresh = (up.data as any) ?? null;
+      if (fresh && (fresh.position || fresh.position_id !== undefined)) {
+        onUpdated(fresh as Employee);
+      } else {
+        const rereq = await api.get(`/employees/${emp.id}`, { params: { include: "position" } });
+        onUpdated(((rereq.data as any)?.data ?? rereq.data) as Employee);
+      }
+      alert("Puesto actualizado");
+    } catch (e: any) {
+      console.error("update position error", e?.response?.status, e?.response?.data);
+      alert(e?.response?.data?.message || "No se pudo actualizar el puesto");
+    } finally {
+      setSavingPos(false);
+    }
+  };
 
+  const { rate: salaryRate, currency: salaryCurrency, monthly } =
+    getHourlyFromPosition(emp.position);
 
-  const salary =
-    emp.position?.base_hourly_rate != null
-      ? Number(emp.position.base_hourly_rate)
-      : undefined;
+  <p>
+    <strong>Salario base por hora:</strong>{" "}
+    {salaryRate > 0
+      ? `${salaryCurrency === "USD" ? "$" : "₡"}${salaryRate.toLocaleString()} ${salaryCurrency}`
+      : "—"}
+  </p>
+
+  {/* Si viene mensual, muéstralo explícito también */}
+  {typeof monthly === "number" && monthly > 0 && (
+    <p className="text-sm text-gray-600">
+      Salario base mensual:{" "}
+      {`${salaryCurrency === "USD" ? "$" : "₡"}${monthly.toLocaleString()} ${salaryCurrency}`}
+      {" "} (tarifa horaria estimada con 173.33 h/mes)
+    </p>
+  )}
 
   return (
     <div className="grid gap-4 max-w-2xl">
@@ -243,14 +262,10 @@ const onSavePosition = async () => {
             <select
               className="border p-2 rounded min-w-[240px]"
               value={selectedPos}
-              onChange={(e) =>
-                setSelectedPos(
-                  e.target.value === "" ? "" : Number(e.target.value)
-                )
-              }
+              onChange={(e) => setSelectedPos(e.target.value === "" ? "" : Number(e.target.value))}
             >
               <option value="">(sin puesto)</option>
-              {positions.map((p) => (
+              {(Array.isArray(positions) ? positions : []).map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name} {p.code ? `(${p.code})` : ""}
                 </option>
@@ -268,16 +283,12 @@ const onSavePosition = async () => {
 
         <p>
           <strong>Puesto:</strong>{" "}
-          {emp.position?.name
-            ? `${emp.position.name}${
-                emp.position.code ? ` (${emp.position.code})` : ""
-              }`
-            : "—"}
+          {emp.position?.name ? `${emp.position.name}${emp.position.code ? ` (${emp.position.code})` : ""}` : "—"}
         </p>
         <p>
           <strong>Salario base por hora:</strong>{" "}
-          {salary != null
-            ? `₡${salary.toLocaleString()} ${emp.position?.currency ?? ""}`
+          {salaryRate > 0
+            ? `${salaryCurrency === "USD" ? "$" : "₡"}${salaryRate.toLocaleString()} ${salaryCurrency}`
             : "—"}
         </p>
       </div>
@@ -285,22 +296,12 @@ const onSavePosition = async () => {
       {/* Campos editables */}
       <label className="grid gap-1">
         <span>Email</span>
-        <input
-          className="border p-2 rounded"
-          name="email"
-          value={form.email}
-          onChange={onChange}
-        />
+        <input className="border p-2 rounded" name="email" value={form.email} onChange={onChange} />
       </label>
 
       <label className="grid gap-1">
         <span>Jornada</span>
-        <select
-          className="border p-2 rounded"
-          name="work_shift"
-          value={form.work_shift}
-          onChange={onChange}
-        >
+        <select className="border p-2 rounded" name="work_shift" value={form.work_shift} onChange={onChange}>
           <option value="">Selecciona…</option>
           <option value="diurna">Diurna</option>
           <option value="nocturna">Nocturna</option>
@@ -310,34 +311,18 @@ const onSavePosition = async () => {
 
       <label className="grid gap-1">
         <span>Fecha inicio</span>
-        <input
-          type="date"
-          className="border p-2 rounded"
-          name="start_date"
-          value={form.start_date}
-          onChange={onChange}
-        />
+        <input type="date" className="border p-2 rounded" name="start_date" value={form.start_date} onChange={onChange} />
       </label>
 
       <label className="grid gap-1">
         <span>Estado</span>
-        <select
-          className="border p-2 rounded"
-          name="status"
-          value={form.status}
-          onChange={onChange}
-        >
-          <option value="activo">Activo</option>
-          <option value="inactivo">Inactivo</option>
-          <option value="suspendido">Suspendido</option>
+        <select className="border p-2 rounded" name="status" value={form.status} onChange={onChange}>
+          <option value="active">Activo</option>
+          <option value="inactive">Inactivo</option>
         </select>
       </label>
 
-      <button
-        disabled={saving}
-        onClick={onSave}
-        className="bg-blue-600 text-white px-4 py-2 rounded"
-      >
+      <button disabled={saving} onClick={onSave} className="bg-blue-600 text-white px-4 py-2 rounded">
         {saving ? "Guardando…" : "Guardar cambios"}
       </button>
     </div>
@@ -378,8 +363,7 @@ function HoursSection({
 
   // Días (para sumar horas si no viene total)
   const daysArr: any[] =
-    Array.isArray(d?.days) ? d.days :
-    Array.isArray(d?.data?.days) ? d.data.days : [];
+    Array.isArray(d?.days) ? d.days : Array.isArray(d?.data?.days) ? d.data.days : [];
 
   const sumDays = daysArr.reduce((acc, it) => acc + toNum(it?.hours ?? it?.h, 0), 0);
 
@@ -390,17 +374,20 @@ function HoursSection({
   const ot: any = d?.overtime ?? d?.ot ?? {};
 
   // Umbral diario para fallback (por defecto 8h)
-  const dailyThreshold = toNum(
-    ot?.daily_threshold ?? d?.rules?.daily_base ?? d?.rules?.dailyLimit,
-    8
-  );
+  const dailyThreshold = toNum(ot?.daily_threshold ?? d?.rules?.daily_base ?? d?.rules?.dailyLimit, 8);
 
-  // Horas extra (día) – intenta varias claves; si no, calcula desde days con el umbral
+  // Horas extra (día)
   let dailyOH = pickNum(
-    ot?.daily_hours, ot?.dailyHours, ot?.daily,
-    ot?.day, ot?.day_hours, ot?.dayHours,
-    ot?.daily?.hours, ot?.day?.hours,
-    d?.extra_day, d?.extraDay
+    ot?.daily_hours,
+    ot?.dailyHours,
+    ot?.daily,
+    ot?.day,
+    ot?.day_hours,
+    ot?.dayHours,
+    ot?.daily?.hours,
+    ot?.day?.hours,
+    d?.extra_day,
+    d?.extraDay
   );
   if (!dailyOH && daysArr.length) {
     dailyOH = daysArr.reduce((acc, it) => {
@@ -411,26 +398,32 @@ function HoursSection({
 
   // Horas extra (semana)
   const weeklyOH = pickNum(
-    ot?.weekly_hours, ot?.weeklyHours, ot?.weekly,
-    ot?.week, ot?.week_hours, ot?.weekHours,
-    ot?.weekly?.hours, ot?.week?.hours,
-    d?.extra_week, d?.extraWeek
+    ot?.weekly_hours,
+    ot?.weeklyHours,
+    ot?.weekly,
+    ot?.week,
+    ot?.week_hours,
+    ot?.weekHours,
+    ot?.weekly?.hours,
+    ot?.week?.hours,
+    d?.extra_week,
+    d?.extraWeek
   );
 
   // Multiplicadores (defaults razonables si no llegan)
   const mult: any = ot?.multipliers ?? ot?.mult ?? {};
-  const mDaily  = toNum(mult?.daily ?? mult?.dailyMultiplier, 1.5);
+  const mDaily = toNum(mult?.daily ?? mult?.dailyMultiplier, 1.5);
   const mWeekly = toNum(mult?.weekly ?? mult?.weeklyMultiplier, 2);
 
   // Horas regulares (no negativas)
   const regularHours = Math.max(0, total - dailyOH - weeklyOH);
 
   // Cálculo de salario
-  const rate       = toNum(hourlyRate, 0);
+  const rate = toNum(hourlyRate, 0);
   const payRegular = regularHours * rate;
-  const payDailyOT = dailyOH  * rate * mDaily;
-  const payWeeklyOT= weeklyOH * rate * mWeekly;
-  const payTotal   = payRegular + payDailyOT + payWeeklyOT;
+  const payDailyOT = dailyOH * rate * mDaily;
+  const payWeeklyOT = weeklyOH * rate * mWeekly;
+  const payTotal = payRegular + payDailyOT + payWeeklyOT;
 
   const money = (n: number) =>
     `${currency === "USD" ? "$" : "₡"}${n.toLocaleString(undefined, {
@@ -444,21 +437,11 @@ function HoursSection({
       <div className="flex gap-2 items-end">
         <label className="grid">
           <span>Desde</span>
-          <input
-            type="date"
-            className="border p-2 rounded"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-          />
+          <input type="date" className="border p-2 rounded" value={from} onChange={(e) => setFrom(e.target.value)} />
         </label>
         <label className="grid">
           <span>Hasta</span>
-          <input
-            type="date"
-            className="border p-2 rounded"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-          />
+          <input type="date" className="border p-2 rounded" value={to} onChange={(e) => setTo(e.target.value)} />
         </label>
       </div>
 
@@ -482,21 +465,12 @@ function HoursSection({
               <strong>Horas del período:</strong> {total.toFixed(2)} h
             </div>
             <ul className="list-disc pl-5">
-              <li>
-                Regulares: {regularHours.toFixed(2)} h → {money(payRegular)}
-              </li>
-              <li>
-                Extra (día): {dailyOH.toFixed(2)} h × {mDaily} → {money(payDailyOT)}
-              </li>
-              <li>
-                Extra (semana): {weeklyOH.toFixed(2)} h × {mWeekly} → {money(payWeeklyOT)}
-              </li>
+              <li>Regulares: {regularHours.toFixed(2)} h → {money(payRegular)}</li>
+              <li>Extra (día): {dailyOH.toFixed(2)} h × {mDaily} → {money(payDailyOT)}</li>
+              <li>Extra (semana): {weeklyOH.toFixed(2)} h × {mWeekly} → {money(payWeeklyOT)}</li>
             </ul>
             <div className="mt-2 text-lg">
               <strong>Total estimado: {money(payTotal)}</strong>
-            </div>
-            <div className="text-xs text-gray-600 mt-1">
-              
             </div>
           </div>
         )}
@@ -504,9 +478,6 @@ function HoursSection({
     </div>
   );
 }
-
-
-
 
 /* ===== (c) Marcaciones — GET /api/time-entries?employee_id=&date=&status=&page= ===== */
 function PunchesSection({ empId }: { empId: number }) {
@@ -579,7 +550,6 @@ function PunchesSection({ empId }: { empId: number }) {
       setExporting(true);
       const params = new URLSearchParams();
 
-      // usar from/to del bloque de export; si no, cae al filtro 'date' de la tabla
       if (from) params.set("from", from);
       if (to) params.set("to", to);
       if (!from && !to && date) {
@@ -608,7 +578,6 @@ function PunchesSection({ empId }: { empId: number }) {
     }
   };
 
-  // ⚠️ Quitamos IDs para evitar “IDs of active elements must be unique”
   return (
     <div className="grid gap-4">
       {/* Filtros para la TABLA */}
@@ -637,10 +606,7 @@ function PunchesSection({ empId }: { empId: number }) {
           </select>
         </label>
 
-        <button
-          onClick={applyFilters}
-          className="bg-gray-900 text-white px-4 py-2 rounded"
-        >
+        <button onClick={applyFilters} className="bg-gray-900 text-white px-4 py-2 rounded">
           {loading ? "Buscando…" : "Filtrar"}
         </button>
       </div>
@@ -649,22 +615,12 @@ function PunchesSection({ empId }: { empId: number }) {
       <div className="flex flex-wrap gap-2 items-end">
         <label className="grid">
           <span>Desde (export)</span>
-          <input
-            type="date"
-            className="border p-2 rounded"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-          />
+          <input type="date" className="border p-2 rounded" value={from} onChange={(e) => setFrom(e.target.value)} />
         </label>
 
         <label className="grid">
           <span>Hasta (export)</span>
-          <input
-            type="date"
-            className="border p-2 rounded"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-          />
+          <input type="date" className="border p-2 rounded" value={to} onChange={(e) => setTo(e.target.value)} />
         </label>
 
         <button
@@ -766,17 +722,13 @@ function FinanceSection({ empId }: { empId: number }) {
       ]);
 
       const sum = (data: any, pick: (x: any) => number) => {
-        if (Array.isArray(data))
-          return data.reduce((a, b) => a + (pick(b) || 0), 0);
+        if (Array.isArray(data)) return data.reduce((a, b) => a + (pick(b) || 0), 0);
         if (typeof data?.total === "number") return data.total;
         return 0;
       };
 
       const advancesSum = sum(adv.data, (x) => x.amount ?? x.total ?? 0);
-      const loansSum = sum(
-        loans.data,
-        (x) => x.balance ?? x.amount ?? x.total ?? 0
-      );
+      const loansSum = sum(loans.data, (x) => x.balance ?? x.amount ?? x.total ?? 0);
       const garnSum = sum(garn.data, (x) => x.amount ?? x.total ?? 0);
 
       setTotals({
@@ -805,15 +757,7 @@ function FinanceSection({ empId }: { empId: number }) {
   );
 }
 
-function Metric({
-  title,
-  value,
-  loading,
-}: {
-  title: string;
-  value: number;
-  loading: boolean;
-}) {
+function Metric({ title, value, loading }: { title: string; value: number; loading: boolean }) {
   return (
     <div className="p-4 border rounded">
       <div className="text-sm text-gray-500">{title}</div>

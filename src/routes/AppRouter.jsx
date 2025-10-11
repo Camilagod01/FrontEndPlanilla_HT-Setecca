@@ -6,6 +6,8 @@ import ProtectedRoute from "./ProtectedRoute";
 import EmployeeProfilePage from "../pages/EmployeeProfilePage";
 import EmployeeCreatePage from "../pages/EmployeeCreatePage";
 import TimeEntriesPage from '../pages/TimeEntriesPage';
+import PositionsPage from "../pages/PositionsPage";
+
 export default function AppRouter() {
   return (
     <BrowserRouter>
@@ -21,7 +23,7 @@ export default function AppRouter() {
           <Route path="/employees" element={<Employees />} />
           <Route path="/employees/new" element={<EmployeeCreatePage />} />
           <Route path="/employees/:id" element={<EmployeeProfilePage />} />
-
+          <Route path="/positions" element={<PositionsPage />} />
           <Route path="/time-entries" element={<TimeEntriesPage />} />
 
         </Route>

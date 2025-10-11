@@ -14,7 +14,11 @@
     "allowJs": true,                
     "noEmit": true,                 
     "isolatedModules": true,        
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "paths": {
+      "@/*": ["src/*"],
+      "src/*": ["src/*"]
+    }
   },
   "include": ["src", "src/declarations.d.ts"],
   "exclude": ["node_modules"]

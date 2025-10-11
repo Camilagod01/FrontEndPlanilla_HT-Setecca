@@ -1,94 +1,15 @@
-/*import axios from 'axios';
+import axios, { AxiosHeaders, InternalAxiosRequestConfig } from "axios";
+import type { Position, Employee, SalaryType, Currency } from "../types";
 
-// Detecta si estamos corriendo con Vite en puerto 5173
-const isViteDev = window.location.hostname === 'localhost' && window.location.port === '5173';
+/* ============================================================
+   =============== Configuración base de Axios =================
+   ============================================================ */
+
+const isViteDev =
+  window.location.hostname === "localhost" && window.location.port === "5173";
 
 const API_BASE = isViteDev
-  ? 'http://127.0.0.1:8000/api' // back con artisan
-  : 'http://localhost:8080/BackEnd_HT_Setecca/public/api'; // back con Apache
-
-console.log('API_BASE =', API_BASE);
-
-const api = axios.create({
-  baseURL: API_BASE,
-  withCredentials: false,
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  config.headers.Accept = 'application/json';
-  return config;
-});
-
-export default api;
-*/
-
-
-
-
-
-
-
-
-/*
-// src/lib/api.ts  (FRONTEND)
-import axios, { AxiosHeaders, InternalAxiosRequestConfig } from "axios";
-
-const API_BASE = import.meta.env.VITE_API_BASE;
-
-const api = axios.create({
-  baseURL: API_BASE,
-  withCredentials: false, // si usas Sanctum por cookies → true
-});
-
-// Interceptor compatible con Axios v1 (tipos y headers seguros)
-api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  // Asegurar que headers exista y sea settable
-  if (!config.headers) {
-    config.headers = new AxiosHeaders();
-  }
-
-  const setHeader = (k: string, v: string) => {
-    if (config.headers instanceof AxiosHeaders) {
-      config.headers.set(k, v);
-    } else {
-      // Fallback por si el tipo es objeto plano
-      (config.headers as Record<string, string>)[k] = v;
-    }
-  };
-
-  // No poner Authorization en /login o /register
-  const url = String(config.url ?? "");
-  const isAuthFree = url.includes("/login") || url.includes("/register");
-
-  setHeader("Accept", "application/json");
-
-  if (!isAuthFree) {
-    const token = localStorage.getItem("token");
-    if (token) setHeader("Authorization", `Bearer ${token}`);
-  }
-
-  return config;
-});
-
-export default api;
-*/
-
-
-
-
-
-
-
-
-// src/lib/api.ts (FRONTEND)
-
-import axios, { AxiosHeaders, InternalAxiosRequestConfig } from "axios";
-
-const isViteDev = window.location.hostname === "localhost" && window.location.port === "5173";
-const API_BASE = isViteDev
-  ? "http://127.0.0.1:8000/api"                 // Laravel artisan serve
+  ? "http://127.0.0.1:8000/api" // Laravel artisan serve
   : "http://localhost:8080/BackEnd_HT_Setecca/public/api"; // Apache
 
 console.log("API_BASE =", API_BASE);
@@ -100,7 +21,9 @@ const api = axios.create({
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const headers =
-    config.headers instanceof AxiosHeaders ? config.headers : new AxiosHeaders(config.headers);
+    config.headers instanceof AxiosHeaders
+      ? config.headers
+      : new AxiosHeaders(config.headers);
   const token = localStorage.getItem("token");
   if (token) headers.set("Authorization", `Bearer ${token}`);
   headers.set("Accept", "application/json");
@@ -110,65 +33,113 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 
 export default api;
 
-
 /* ============================================================
-   =============== Tipos básicos de dominio ===================
+   ==================== Positions API =========================
    ============================================================ */
 
-export interface Position {
-  id: number;
+/** Lista de puestos (paginado o plano); normaliza a array + meta */
+export async function listPositions(params?: {
+  search?: string;
+  active?: boolean;
+  page?: number;
+  per_page?: number;
+}): Promise<{ data: Position[]; meta: { current_page: number; last_page: number } }> {
+  const res = await api.get("/positions", { params });
+  const raw: any = res.data;
+  const data: Position[] = Array.isArray(raw) ? raw : raw?.data ?? [];
+  const meta = Array.isArray(raw)
+    ? { current_page: 1, last_page: 1 }
+    : {
+        current_page: raw?.current_page ?? 1,
+        last_page: raw?.last_page ?? 1,
+      };
+  return { data, meta };
+}
+
+/** Versión “flat” si quieres traer lista simple para selects */
+export async function listPositionsFlat(fields = "id,code,name"): Promise<Position[]> {
+  const res = await api.get("/positions", { params: { flat: 1, fields } });
+  return (res.data ?? []) as Position[];
+}
+
+/** Crear puesto */
+export async function createPosition(payload: {
+  code: string;
   name: string;
+  salary_type: SalaryType; // "monthly" | "hourly"
+  default_salary_amount?: number | null;
+  default_salary_currency: Currency; // "CRC" | "USD"
+  // compat opcional (legacy)
+  base_hourly_rate?: number | null;
+  currency?: Currency;
+  is_active?: boolean;
+}): Promise<Position> {
+  const { data } = await api.post<Position>("/positions", payload);
+  return data;
 }
 
-export interface Employee {
-  id: number;
-  code?: string;
-  first_name: string;
-  last_name: string;
-  email?: string | null;
-  position_id?: number | null;
-  position?: Position | null; // ← para mostrar position.name
-  // agrega aquí otros campos que uses (status, hire_date, etc.)
+/** Actualizar puesto */
+export async function updatePosition(
+  id: number,
+  payload: Partial<{
+    code: string;
+    name: string;
+    salary_type: SalaryType;
+    default_salary_amount: number | null;
+    default_salary_currency: Currency;
+    base_hourly_rate?: number | null; // compat
+    currency?: Currency; // compat
+    is_active?: boolean;
+  }>
+): Promise<Position> {
+  const { data } = await api.patch<Position>(`/positions/${id}`, payload);
+  return data;
+}
+
+/** Eliminar / desactivar puesto (según backend) */
+export async function deletePosition(id: number) {
+  const { data } = await api.delete(`/positions/${id}`);
+  return data;
 }
 
 /* ============================================================
-   ===== Endpoints para Positions / Employee Position =========
+   ============== Employees + Position update =================
    ============================================================ */
 
-// Lista de puestos (para el <select>)
-export async function listPositions(): Promise<Position[]> {
-  const { data } = await api.get<Position[]>("/positions");
-  return data;
-}
-
-// Traer un empleado (y su relación position)
+/** Traer un empleado (backend ya hace load('position')) */
 export async function getEmployee(employeeId: number): Promise<Employee> {
-  // Si en backend usas include=position, déjalo; si no, el controlador ya hace load('position')
-  const { data } = await api.get<Employee>(`/employees/${employeeId}?include=position`);
-  return data;
+  const { data } = await api.get<Employee>(`/employees/${employeeId}`, {
+    params: { include: "position" },
+  });
+  return (data as any)?.data ?? data;
 }
 
-// Actualizar SOLO el puesto del empleado
+/** Actualizar SOLO el puesto del empleado */
 export async function updateEmployeePosition(
   employeeId: number,
-  position_id: number | null
+  position_id: number | null,
+  use_position_salary?: boolean
 ): Promise<Employee> {
-  // Ruta dedicada que sugerimos en Laravel: PATCH /employees/:id/position
-  const { data } = await api.patch<Employee>(`/employees/${employeeId}/position`, { position_id });
-  return data; // viene con .position cargado para refrescar la UI
+  const { data } = await api.patch<Employee>(
+    `/employees/${employeeId}/position`,
+    { position_id, use_position_salary }
+  );
+  return data;
 }
 
-
 /* ============================================================
-   =============== Tipos para /metrics/hours ==================
+   =============== Tipos y API de /metrics/hours ==============
    ============================================================ */
 
-export interface EmployeeHoursDay { date: string; hours: number }
+export interface EmployeeHoursDay {
+  date: string;
+  hours: number;
+}
 
 export interface EmployeeHoursResponse {
   employee_id: number;
   from: string; // YYYY-MM-DD
-  to: string;   // YYYY-MM-DD
+  to: string; // YYYY-MM-DD
   total_hours: number;
   overtime: {
     daily_hours: number;
@@ -178,26 +149,25 @@ export interface EmployeeHoursResponse {
   days: EmployeeHoursDay[];
 }
 
-// ===== Función para GET /api/metrics/hours =====
 export async function fetchEmployeeHours(params: {
   employee_id: number;
   from: string;
   to: string;
 }) {
-  const { data } = await api.get<EmployeeHoursResponse>("/metrics/hours", { params });
+  const { data } = await api.get<EmployeeHoursResponse>("/metrics/hours", {
+    params,
+  });
   return data;
 }
 
 /* ============================================================
-   ============ Utilidades (CSV Export) ============
+   ===================== Export CSV global ====================
    ============================================================ */
 
-
-// Helper para construir nombre de archivo con rango
 function buildExportFilename(prefix: string, params: { from?: string; to?: string }) {
   const now = new Date();
-  const hhmm = now.toISOString().slice(11,16).replace(":", "");
-  
+  const hhmm = now.toISOString().slice(11, 16).replace(":", "");
+
   let rango = "hoy";
   if (params.from && params.to) {
     rango = `${params.from}_a_${params.to}`;
@@ -210,10 +180,11 @@ function buildExportFilename(prefix: string, params: { from?: string; to?: strin
   return `${prefix}_${rango}_${hhmm}.csv`;
 }
 
-
-// ✅ ÚNICA función exportTimeEntriesCSV
 export async function exportTimeEntriesCSV(params: {
-  employee?: string; from?: string; to?: string; status?: 'completo'|'pendiente_salida'|'anómala';
+  employee?: string;
+  from?: string;
+  to?: string;
+  status?: "completo" | "pendiente_salida" | "anómala";
 } = {}) {
   const q = new URLSearchParams();
   if (params.employee) q.set("employee", params.employee);
@@ -230,28 +201,23 @@ export async function exportTimeEntriesCSV(params: {
     const blob = res.data as Blob;
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-  a.download = buildExportFilename("marcaciones", params);
-
+    a.download = buildExportFilename("marcaciones", params);
     a.click();
     URL.revokeObjectURL(a.href);
   } catch (err: any) {
-    // Intenta leer texto del error si vino HTML/JSON
     let detail = "";
     if (err?.response?.data instanceof Blob) {
-      try { detail = await err.response.data.text(); } catch {}
+      try {
+        detail = await err.response.data.text();
+      } catch {}
     } else if (err?.response?.data) {
-      detail = typeof err.response.data === "string" ? err.response.data : JSON.stringify(err.response.data);
+      detail =
+        typeof err.response.data === "string"
+          ? err.response.data
+          : JSON.stringify(err.response.data);
     }
     const status = err?.response?.status ?? "NETWORK";
     console.error("Export error", status, detail);
-    throw new Error(`HTTP ${status} ${detail?.slice(0,200) || ""}`.trim());
+    throw new Error(`HTTP ${status} ${detail?.slice(0, 200) || ""}`.trim());
   }
-
-
-
 }
-
-
-
-
-

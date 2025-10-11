@@ -1,7 +1,8 @@
-// src/pages/EmployeeHoursCard.tsx
 import React from "react";
 import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
+import SickBadge from "@/components/SickBadge";
+import { listSickLeaves, createSickLeave, updateSickLeave, deleteSickLeave } from '@/services/sickLeaves';
 
 dayjs.extend(isoWeek);
 
@@ -11,6 +12,8 @@ type DayRow = {
   expected?: number | string | null;
   worked?: number | string | null;
   extra_day?: number | string | null;
+  sick_type?: "50pct" | "0pct" | null;
+  sick_note?: string | null;
 };
 
 type WeekRow = {
@@ -88,6 +91,67 @@ export default function EmployeeHoursCard({ result, loading, error }: Props) {
         <Stat label="Extra (día)" value={extraDay} suffix="h" />
         <Stat label="Extra (semana)" value={extraWeek} suffix="h" />
       </div>
+
+      {/* Desglose diario */}
+      {(result.days?.length ?? 0) > 0 && (
+        <div className="border-t pt-3">
+          <h4 className="font-medium mb-2">Desglose diario</h4>
+          <ul className="grid gap-2">
+            {result.days.map((d) => {
+              const worked = num(d.worked);
+              const expected = num(d.expected);
+              const extra = num(d.extra_day);
+              const wd = d.weekday ?? dayjs(d.date).format("ddd");
+
+              return (
+                <li
+                  key={d.date}
+                  className="p-3 rounded-lg border bg-white/60 flex items-center justify-between"
+                >
+                  {/* Columna fecha + badge */}
+                  <div className="flex items-center gap-2">
+                    <div className="text-gray-700 font-medium">
+                      {dayjs(d.date).format("DD/MM")} <span className="text-xs text-gray-500">({wd})</span>
+                    </div>
+
+                    {/* Badge de incapacidad (con tooltip) */}
+                    {(() => {
+                      const sType =
+                        d.sick_type === "50pct" || d.sick_type === "0pct" ? d.sick_type : null;
+
+                      if (!sType) return null;
+
+                      const title = d.sick_note
+                        ? d.sick_note
+                        : sType === "50pct"
+                        ? "Incapacidad 50% (cuenta para métricas; costo 50% en payroll futuro)"
+                        : "Incapacidad 0% (no cuenta horas trabajadas)";
+
+                      return (
+                        <span title={title}>
+                          <SickBadge type={sType} />
+                        </span>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Columna horas */}
+                  <div className="text-sm">
+                    <span className="font-semibold">{worked.toFixed(2)} h</span>
+                    <span className="text-gray-500"> / {expected.toFixed(2)} h</span>
+                    {extra > 0 && (
+                      <span className="ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-50 border border-amber-200">
+                        +{extra.toFixed(2)} h extra
+                      </span>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
 
       {/* Desglose por semana (más claro) */}
       {(result.weeks?.length ?? 0) > 0 && (
