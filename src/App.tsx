@@ -9,6 +9,17 @@ import Layout from "./components/Layout";
 import TimeEntries from "./pages/TimeEntriesPage";
 import PositionsPage from "./pages/PositionsPage";
 import AttendanceReportPage from "./pages/AttendanceReportPage";
+import AdvancesPage from "./pages/AdvancesPage"; // Página de Adelantos
+import LoansPage from "./pages/LoansPage";
+import SickLeavesPage from "./pages/SickLeavesPage";
+import VacationsPage from "./pages/VacationsPage";
+import AbsencesPage from "./pages/AbsencesPage";
+import HolidaysPage from "./pages/HolidaysPage";
+import PayrollSettingsPage from "./pages/PayrollSettingsPage";
+import JustificationsPage from "./pages/JustificationsPage";
+import ReportsSummaryPage from "./pages/ReportsSummaryPage";
+
+
 
 export default function App() {
   return (
@@ -20,6 +31,7 @@ export default function App() {
         {/* Protegido + Layout */}
         <Route element={<ProtectedRoute />}>
           <Route element={<Layout />}>
+
             {/* Redirect al dashboard */}
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
@@ -37,6 +49,32 @@ export default function App() {
 
             {/* Reportes */}
             <Route path="/reports/attendance" element={<AttendanceReportPage />} />
+
+            {/* Adelantos */}
+            <Route path="/advances" element={<AdvancesPage />} />
+            <Route path="/loans" element={<LoansPage />} />
+          
+            {/* Licencias Médicas Discapacidades */}
+            <Route path="/sick-leaves" element={<SickLeavesPage />} />
+
+            {/* Vacaciones */}
+          <Route path="/vacations" element={<VacationsPage />} />
+
+            {/* Permisos */}
+          <Route path="/absences" element={<AbsencesPage />} />
+
+            {/* Feriados */}  
+          <Route path="/holidays" element={<HolidaysPage />} />
+
+            {/* Configuración de Planilla */}
+            <Route path="/settings/payroll" element={<PayrollSettingsPage />} />
+
+            {/* Justificaciones */}
+            <Route path="/justifications" element={<JustificationsPage />} />
+
+            {/* Resumen de Reportes */}
+            <Route path="/reports/summary" element={<ReportsSummaryPage />} />
+
           </Route>
         </Route>
 

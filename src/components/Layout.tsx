@@ -22,6 +22,15 @@ export default function Layout() {
           <NavLink to="/employees/new" className={link}>Agregar empleado</NavLink>
           <NavLink to="/positions" className={link}>Puestos</NavLink>
           <NavLink to="/time-entries" className={link}>Marcaciones</NavLink>
+          <NavLink to="/advances" className={link}>Adelantos</NavLink>
+          <NavLink to="/loans" className={link}>Préstamos</NavLink>
+          <NavLink to="/sick-leaves" className={link}>Incapacidades</NavLink>
+          <NavLink to="/vacations" className={link}>Vacaciones</NavLink>
+          <NavLink to="/absences" className={link}>Permisos/Ausencias</NavLink>
+          <NavLink to="/holidays" className={link}>Feriados</NavLink> 
+          <NavLink to="/settings/payroll" className={link}>Configuración de Planilla</NavLink>
+          <NavLink to="/justifications" className={link}>Justificaciones</NavLink>
+          <NavLink to="/reports/summary" className={link}>Resumen de Reportes</NavLink>
 
           <div style={{ marginTop: 10, fontSize: 12, color: "#6b7280" }}>Reportes</div>
           <NavLink to="/reports/attendance" className={link}>Asistencia</NavLink>

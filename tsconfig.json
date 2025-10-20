@@ -1,25 +1,22 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "module": "ESNext",
-    "lib": ["ESNext", "DOM"],
+    "skipLibCheck": true,
     "jsx": "react-jsx",
     "moduleResolution": "Bundler",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "baseUrl": ".",
-    "types": ["vite/client", "react", "react-dom"],
-    "allowJs": true,                
-    "noEmit": true,                 
-    "isolatedModules": true,        
     "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "strict": true,
+
+    // Alias @ funcionando para el editor y el build
+    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "src/*": ["src/*"]
+      "@/*": ["src/*"]
     }
   },
-  "include": ["src", "src/declarations.d.ts"],
-  "exclude": ["node_modules"]
+  "include": ["src"]
 }

@@ -7,11 +7,17 @@ import EmployeeProfilePage from "../pages/EmployeeProfilePage";
 import EmployeeCreatePage from "../pages/EmployeeCreatePage";
 import TimeEntriesPage from '../pages/TimeEntriesPage';
 import PositionsPage from "../pages/PositionsPage";
+import AdvancesPage from "@/pages/AdvancesPage";
+
+
 
 export default function AppRouter() {
   return (
     <BrowserRouter>
       <Routes>
+       <Route path="/" element={<HomePage />} />
+      <Route path="/advances" element={<AdvancesPage />} />
+
         {/* Público */}
         <Route path="/login" element={<Login />} />
 
@@ -25,6 +31,8 @@ export default function AppRouter() {
           <Route path="/employees/:id" element={<EmployeeProfilePage />} />
           <Route path="/positions" element={<PositionsPage />} />
           <Route path="/time-entries" element={<TimeEntriesPage />} />
+
+
 
         </Route>
       </Routes>
