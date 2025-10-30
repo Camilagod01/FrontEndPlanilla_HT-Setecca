@@ -9,7 +9,7 @@ import Layout from "./components/Layout";
 import TimeEntries from "./pages/TimeEntriesPage";
 import PositionsPage from "./pages/PositionsPage";
 import AttendanceReportPage from "./pages/AttendanceReportPage";
-import AdvancesPage from "./pages/AdvancesPage"; // Página de Adelantos
+import AdvancesPage from "./pages/AdvancesPage";
 import LoansPage from "./pages/LoansPage";
 import SickLeavesPage from "./pages/SickLeavesPage";
 import VacationsPage from "./pages/VacationsPage";
@@ -18,7 +18,7 @@ import HolidaysPage from "./pages/HolidaysPage";
 import PayrollSettingsPage from "./pages/PayrollSettingsPage";
 import JustificationsPage from "./pages/JustificationsPage";
 import ReportsSummaryPage from "./pages/ReportsSummaryPage";
-
+import StatementPage from "./pages/StatementPage";
 
 
 export default function App() {
@@ -74,6 +74,10 @@ export default function App() {
 
             {/* Resumen de Reportes */}
             <Route path="/reports/summary" element={<ReportsSummaryPage />} />
+
+            {/* Estado de Cuenta */}
+            <Route path="/statement" element={<StatementPage />} />
+            <Route path="/employees/:id/statement" element={<StatementPage />} />
 
           </Route>
         </Route>

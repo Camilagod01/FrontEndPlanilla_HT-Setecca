@@ -31,6 +31,7 @@ export default function Layout() {
           <NavLink to="/settings/payroll" className={link}>Configuración de Planilla</NavLink>
           <NavLink to="/justifications" className={link}>Justificaciones</NavLink>
           <NavLink to="/reports/summary" className={link}>Resumen de Reportes</NavLink>
+          <NavLink to="/statement" className={link}>Estado de Cuenta</NavLink> 
 
           <div style={{ marginTop: 10, fontSize: 12, color: "#6b7280" }}>Reportes</div>
           <NavLink to="/reports/attendance" className={link}>Asistencia</NavLink>

@@ -1,4 +1,3 @@
-// frontend/src/components/SickBadge.tsx
 import React from "react";
 
 type Props = {
