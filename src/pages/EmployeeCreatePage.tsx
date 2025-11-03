@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../lib/api";
+import { Suspense } from "react";
+import ImportEmployeesModal from "@/components/ImportEmployeesModal";
 
 type Errors = Record<string, string[]>;
 
@@ -16,6 +18,7 @@ export default function EmployeeCreatePage() {
   const nav = useNavigate();
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Errors>({});
+  const [openImport, setOpenImport] = useState(false);
 
   // Campos: code, first_name, last_name, email, position, hire_date, status
   const [form, setForm] = useState({
@@ -284,9 +287,18 @@ export default function EmployeeCreatePage() {
           </div>
         </div>
 
+        {openImport && <ImportEmployeesModal onClose={() => setOpenImport(false)} />}
+
         <div className="flex gap-2">
           <button type="submit" disabled={saving} className="bg-blue-600 text-white px-4 py-2 rounded">
             {saving ? "Guardando…" : "Crear empleado"}
+          </button>
+          <button
+            type="button"
+            className="border rounded px-3 py-2"
+            onClick={() => setOpenImport(true)}
+          >
+            Importar empleados (CSV)
           </button>
           <button type="button" onClick={() => nav(-1)} className="border px-4 py-2 rounded">
             Cancelar
