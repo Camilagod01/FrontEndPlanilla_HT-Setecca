@@ -1,9 +1,16 @@
+// src/main.jsx
+import React from "react";
 import ReactDOM from "react-dom/client";
+import { HashRouter } from "react-router-dom";   // <— usa HashRouter
 import App from "./App";
-import { AuthProvider } from "./context/AuthContextObject";
+import { AuthProvider } from "./context/AuthContext";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
-  <AuthProvider>
-    <App />
-  </AuthProvider>
+  <React.StrictMode>
+    <AuthProvider>
+      <HashRouter>
+        <App />
+      </HashRouter>
+    </AuthProvider>
+  </React.StrictMode>
 );

@@ -1,7 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
-import api from "@/lib/api";
+//import api from "@/lib/api";
+import api from "@/api";
 import { downloadBlob } from "@/lib/downloadBlob";
+import { Link } from "react-router-dom";
+
+
 
 type Row = {
   employee_id: number;
@@ -34,6 +38,28 @@ function useDebounced<T>(value: T, delay = 350) {
   }, [value, delay]);
   return v;
 }
+
+
+
+const highlightRow = (r: any): React.CSSProperties | undefined => {
+  // nombres típicos del backend: ajusto con fallbacks para no romper nada
+  const regular =
+    Number(r.hours_1x ?? r.hours_regular ?? r.horas_regulares ?? 0);
+  const total =
+    Number(r.total_hours ?? r.total ?? r.horas_totales ?? 0);
+
+  const hasExtra = total > regular; // si el total es mayor a las horas 1x, significa que hubo extra
+
+  if (!hasExtra) return undefined;
+
+  return {
+    backgroundColor: "#fff3cd", // amarillo fuerte
+  };
+};
+
+
+
+
 
 export default function AttendanceReportPage() {
   // Filtros (por defecto: mes actual)
@@ -159,29 +185,46 @@ export default function AttendanceReportPage() {
                 <Th className="text-right">Días (rango)</Th>
               </tr>
             </thead>
+
+
             <tbody>
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={10} className="p-4 text-center text-gray-500">
-                    Sin resultados para el rango.
-                  </td>
-                </tr>
-              )}
-              {rows.map((r) => (
-                <tr key={r.employee_id} className="border-t">
-                  <Td>{r.name}</Td>
-                  <Td>{r.code || "—"}</Td>
-                  <Td>{r.position || "—"}</Td>
-                  <TdRight>{r.regular_hours.toFixed(2)}</TdRight>
-                  <TdRight>{r.overtime_15.toFixed(2)}</TdRight>
-                  <TdRight>{r.overtime_20.toFixed(2)}</TdRight>
-                  <TdRight className="font-medium">{r.total.toFixed(2)}</TdRight>
-                  <TdRight>{r.sick_50pct_days}</TdRight>
-                  <TdRight>{r.sick_0pct_days}</TdRight>
-                  <TdRight>{r.attendance_days}</TdRight>
-                </tr>
-              ))}
-            </tbody>
+  {rows.length === 0 && (
+    <tr>
+      <td colSpan={10} className="p-4 text-center text-gray-500">
+        Sin resultados para el rango.
+      </td>
+    </tr>
+  )}
+
+  {rows.map((r) => (
+    <tr key={r.employee_id} style={highlightRow(r)} className="border-t">
+      {/*<Td>{r.name}</Td>*/}
+      <Td>
+        <Link
+          to={`/employees/${r.employee_id}/statement`}
+          className="text-indigo-600 hover:underline"
+        >
+          {r.name}
+        </Link>
+      </Td>
+
+      <Td>{r.code || "—"}</Td>
+      <Td>{r.position || "—"}</Td>
+      <TdRight>{r.regular_hours.toFixed(2)}</TdRight>
+      <TdRight>{r.overtime_15.toFixed(2)}</TdRight>
+      <TdRight>{r.overtime_20.toFixed(2)}</TdRight>
+      <TdRight className="font-medium">{r.total.toFixed(2)}</TdRight>
+      <TdRight>{r.sick_50pct_days}</TdRight>
+      <TdRight>{r.sick_0pct_days}</TdRight>
+      <TdRight>{r.attendance_days}</TdRight>
+    </tr>
+  ))}
+</tbody>
+
+
+
+
+
             {/* Footer con totales simples */}
             {rows.length > 0 && (
               <tfoot className="bg-gray-50">

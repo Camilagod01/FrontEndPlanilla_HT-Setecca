@@ -221,3 +221,143 @@ export async function exportTimeEntriesCSV(params: {
     throw new Error(`HTTP ${status} ${detail?.slice(0, 200) || ""}`.trim());
   }
 }
+
+
+/* ============================================================
+   =============== Employees extra (A–C completo) ==============
+   ============================================================ */
+
+/** Listado paginado + búsqueda + orden */
+export async function listEmployees(params?: {
+  per_page?: number;
+  search?: string;
+  sort?: string;
+  dir?: "asc" | "desc";
+}) {
+  const res = await api.get("/employees", { params });
+  // backend devuelve paginator con { current_page, data, ... }
+  return res.data; // { current_page, data, ... }
+}
+
+/** Opciones minimalistas para selects (id, code, full_name) */
+export async function employeesOptions() {
+  const res = await api.get("/employees/options");
+  return res.data; // { data: [{id, code, full_name}, ...] }
+}
+
+/** Crear empleado */
+export async function createEmployee(payload: {
+  code: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  status: "active" | "inactive";
+  position_id?: number | null;
+  garnish_cap_rate?: number | null;
+}) {
+  const res = await api.post("/employees", payload);
+  return res.data; // { data: Employee }
+}
+
+/** Actualizar campos del empleado */
+export async function updateEmployee(
+  id: number,
+  payload: Partial<{
+    code: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    status: "active" | "inactive";
+    garnish_cap_rate: number | null;
+  }>
+) {
+  const res = await api.patch(`/employees/${id}`, payload);
+  return res.data; // { data: Employee }
+}
+
+/** Eliminar empleado */
+export async function deleteEmployee(id: number) {
+  const res = await api.delete(`/employees/${id}`);
+  return res.data; // { ok: true, id, msg }
+}
+
+/* ============================================================
+   ==================== Garnishments API ======================
+   ============================================================ */
+
+export type GarnishmentMode = "amount" | "percent";
+export interface Garnishment {
+  id: number;
+  employee_id: number;
+  mode: GarnishmentMode;
+  value: number;
+  start_date: string; // YYYY-MM-DD
+  end_date?: string | null;
+  priority?: number;
+  active: boolean;
+  order_no?: string | null;
+  notes?: string | null;
+}
+
+/** Listar embargos (opcionalmente por empleado) */
+export async function listGarnishments(params?: { employee_id?: number }) {
+  const res = await api.get("/garnishments", { params });
+  return res.data; // { data: Garnishment[] } o similar
+}
+
+export async function showGarnishment(id: number) {
+  const res = await api.get(`/garnishments/${id}`);
+  return res.data; // { data: Garnishment }
+}
+
+export async function createGarnishment(payload: {
+  employee_id: number;
+  mode: GarnishmentMode;
+  value: number;
+  start_date: string;
+  end_date?: string | null;
+  priority?: number;
+  active?: boolean;
+  order_no?: string | null;
+  notes?: string | null;
+}) {
+  const res = await api.post(`/garnishments`, payload);
+  return res.data; // { data: Garnishment }
+}
+
+export async function updateGarnishment(
+  id: number,
+  payload: Partial<{
+    mode: GarnishmentMode;
+    value: number;
+    start_date: string;
+    end_date: string | null;
+    priority: number;
+    active: boolean;
+    order_no: string | null;
+    notes: string | null;
+  }>
+) {
+  const res = await api.patch(`/garnishments/${id}`, payload);
+  return res.data; // { data: Garnishment }
+}
+
+export async function deleteGarnishment(id: number) {
+  const res = await api.delete(`/garnishments/${id}`);
+  return res.data; // { ok: true, id, ... }
+}
+
+/* ============================================================
+   =================== Payroll Preview API ====================
+   ============================================================ */
+
+/** Previsualizar planilla con tope de embargos */
+export async function previewPayroll(params: {
+  employee_id: number;
+  from: string; // YYYY-MM-DD
+  to: string;   // YYYY-MM-DD
+}) {
+  // tu backend acepta GET (y también tiene match GET|POST)
+  const res = await api.get("/payroll/preview", { params });
+  return res.data; // { ok, stage, money, garnish_cap, garnishments, ... }
+}

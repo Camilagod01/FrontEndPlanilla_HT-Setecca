@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useAuth } from "../context/useAuth";
-import { useNavigate, useLocation } from "react-router-dom";
+//import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
+
+
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -11,9 +14,15 @@ export default function Login() {
   const { signIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const token = localStorage.getItem("token"); // o usa: const { user } = useAuth();
 
 
   const from = location.state?.from?.pathname || "/dashboard";
+
+  // Si ya hay sesión, no renderiza el formulario
+ if (token) {
+   return <Navigate to={from} replace />;
+ }
 
   const onSubmit = async (e) => {
     e.preventDefault();

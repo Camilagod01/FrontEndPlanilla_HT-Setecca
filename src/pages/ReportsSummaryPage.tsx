@@ -4,9 +4,50 @@ import { http } from "@/api/https";
 
 type EmpOption = { id: number; label: string };
 
-const box: React.CSSProperties = { padding: 12, border: "1px solid #eee", borderRadius: 8, background: "#fff" };
-const td: React.CSSProperties = { padding: "8px 6px", borderBottom: "1px solid #eee", textAlign: "right" };
-const th: React.CSSProperties = { ...td, fontWeight: 600, background: "#fafafa" };
+// Estilos básicos reutilizables
+const box: React.CSSProperties = {
+  padding: 12,
+  border: "1px solid #eee",
+  borderRadius: 8,
+  background: "#fff",
+};
+
+const td: React.CSSProperties = {
+  padding: "8px 6px",
+  borderBottom: "1px solid #eee",
+  textAlign: "right",
+};
+
+const th: React.CSSProperties = {
+  ...td,
+  fontWeight: 600,
+  background: "#fafafa",
+};
+
+// ---- NUEVOS TYPES PARA /api/metrics/hours (solo lo que usamos) ----
+type HoursEmployee = {
+  id: number;
+  name: string;
+};
+
+type HoursRow = {
+  employee: HoursEmployee;
+  total: number;
+  extra_day: number;
+  extra_week: number;
+};
+
+type HoursTotals = {
+  total: number;
+  extra_day: number;
+  extra_week: number;
+};
+
+type HoursResponse = {
+  period: { from: string; to: string };
+  rows: HoursRow[];
+  totals: HoursTotals;
+};
 
 export default function ReportsSummaryPage() {
   const today = new Date();
@@ -27,6 +68,12 @@ export default function ReportsSummaryPage() {
 
   const canSearch = useMemo(() => !!from && !!to, [from, to]);
 
+  // ---- NUEVO ESTADO PARA MÉTRICAS DE HORAS ----
+  const [hoursRows, setHoursRows] = useState<HoursRow[]>([]);
+  const [hoursTotals, setHoursTotals] = useState<HoursTotals | null>(null);
+  const [hoursLoading, setHoursLoading] = useState(false);
+  const [hoursError, setHoursError] = useState<string | null>(null);
+
   async function loadEmployees() {
     try {
       const res = await http.get("/employees/options");
@@ -36,15 +83,19 @@ export default function ReportsSummaryPage() {
         const label =
           r?.label ??
           r?.full_name ??
-          (r?.first_name || r?.last_name ? `${r?.first_name ?? ""} ${r?.last_name ?? ""}`.trim() : undefined) ??
+          (r?.first_name || r?.last_name
+            ? `${r?.first_name ?? ""} ${r?.last_name ?? ""}`.trim()
+            : undefined) ??
           r?.code ??
           (id ? `#${id}` : undefined);
         if (!id || !label) return null;
         return { id, label };
       };
-      const opts = Array.isArray(raw) ? raw.map(normalize).filter(Boolean) as EmpOption[] :
-        Array.isArray(raw?.data) ? raw.data.map(normalize).filter(Boolean) as EmpOption[] :
-        [];
+      const opts = Array.isArray(raw)
+        ? (raw.map(normalize).filter(Boolean) as EmpOption[])
+        : Array.isArray(raw?.data)
+        ? (raw.data.map(normalize).filter(Boolean) as EmpOption[])
+        : [];
       setEmpOpts(opts);
     } catch {
       setEmpOpts([]);
@@ -70,39 +121,88 @@ export default function ReportsSummaryPage() {
     }
   }
 
+  // ---- NUEVA FUNCIÓN: CARGAR /api/metrics/hours?group_by=employee ----
+  async function fetchHours() {
+    if (!canSearch) return;
+    setHoursLoading(true);
+    setHoursError(null);
+    try {
+      const res = await http.get<HoursResponse>("/metrics/hours", {
+        params: {
+          from,
+          to,
+          group_by: "employee",
+        },
+      });
+      setHoursRows(res.data.rows || []);
+      setHoursTotals(res.data.totals || null);
+    } catch (e: any) {
+      setHoursError(e?.response?.data?.message ?? "Error al cargar horas");
+      setHoursRows([]);
+      setHoursTotals(null);
+    } finally {
+      setHoursLoading(false);
+    }
+  }
+
   useEffect(() => {
     loadEmployees();
+    // Carga inicial del resumen y horas con el mes actual
     fetchData();
+    fetchHours();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const total = rows.reduce(
     (acc, r) => {
       acc.adv_pend += r.advances.pending_amount;
-      acc.adv_app  += r.advances.applied_amount;
+      acc.adv_app += r.advances.applied_amount;
       acc.loan_pri += r.loans.principal_sum;
       acc.pay_paid += r.loan_payments.paid;
       acc.pay_pend += r.loan_payments.pending;
       acc.pay_skip += r.loan_payments.skipped;
-      acc.sick    += r.sick_leaves_days;
-      acc.vac     += r.vacations_days;
-      acc.abs_h   += r.absences.hours;
-      acc.abs_d   += r.absences.days;
-      acc.j_pend  += r.justifications.pending;
-      acc.j_app   += r.justifications.approved;
-      acc.j_rej   += r.justifications.rejected;
+      acc.sick += r.sick_leaves_days;
+      acc.vac += r.vacations_days;
+      acc.abs_h += r.absences.hours;
+      acc.abs_d += r.absences.days;
+      acc.j_pend += r.justifications.pending;
+      acc.j_app += r.justifications.approved;
+      acc.j_rej += r.justifications.rejected;
       return acc;
     },
-    { adv_pend: 0, adv_app: 0, loan_pri: 0, pay_paid: 0, pay_pend: 0, pay_skip: 0, sick: 0, vac: 0, abs_h: 0, abs_d: 0, j_pend: 0, j_app: 0, j_rej: 0 }
+    {
+      adv_pend: 0,
+      adv_app: 0,
+      loan_pri: 0,
+      pay_paid: 0,
+      pay_pend: 0,
+      pay_skip: 0,
+      sick: 0,
+      vac: 0,
+      abs_h: 0,
+      abs_d: 0,
+      j_pend: 0,
+      j_app: 0,
+      j_rej: 0,
+    }
   );
 
   return (
     <div style={{ padding: 16 }}>
       <h2 style={{ marginBottom: 12 }}>Reporte resumido</h2>
 
+      {/* Filtros compartidos */}
       <section style={{ ...box, marginBottom: 12 }}>
         <strong>Filtros</strong>
-        <div style={{ display: "grid", gridTemplateColumns: "160px 160px 1fr auto", gap: 8, marginTop: 8, alignItems: "end" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "160px 160px 1fr auto",
+            gap: 8,
+            marginTop: 8,
+            alignItems: "end",
+          }}
+        >
           <div>
             <div style={{ marginBottom: 6 }}>Desde</div>
             <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
@@ -116,19 +216,34 @@ export default function ReportsSummaryPage() {
             <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
               <option value="">Todos</option>
               {empOpts.map((o) => (
-                <option key={o.id} value={o.id}>{o.label}</option>
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
               ))}
             </select>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={fetchData} disabled={!canSearch || loading}>Buscar</button>
+            <button
+              onClick={() => {
+                // Resumen (prestamos, adelantos, etc.)
+                fetchData();
+                // Horas por empleado
+                fetchHours();
+              }}
+              disabled={!canSearch || loading || hoursLoading}
+            >
+              Buscar
+            </button>
             <button
               onClick={() => {
                 setEmployeeId("");
                 setFrom(firstDay);
                 setTo(lastDay);
+                // Recalcular con el rango reset
+                fetchData();
+                fetchHours();
               }}
-              disabled={loading}
+              disabled={loading || hoursLoading}
             >
               Limpiar
             </button>
@@ -136,7 +251,8 @@ export default function ReportsSummaryPage() {
         </div>
       </section>
 
-      <section style={{ ...box }}>
+      {/* Sección original: resumen de adelantos, préstamos, vacaciones, etc. */}
+      <section style={{ ...box, marginBottom: 16 }}>
         {errorMsg && <div style={{ color: "crimson", marginBottom: 8 }}>{errorMsg}</div>}
         {loading ? (
           <div>Cargando…</div>
@@ -163,11 +279,17 @@ export default function ReportsSummaryPage() {
             </thead>
             <tbody>
               {rows.length === 0 ? (
-                <tr><td style={{ ...td, textAlign: "left" }} colSpan={15}>Sin datos</td></tr>
+                <tr>
+                  <td style={{ ...td, textAlign: "left" }} colSpan={15}>
+                    Sin datos
+                  </td>
+                </tr>
               ) : (
                 rows.map((r) => (
                   <tr key={r.employee.id}>
-                    <td style={{ ...td, textAlign: "left" }}>{r.employee.full_name || r.employee.code || `#${r.employee.id}`}</td>
+                    <td style={{ ...td, textAlign: "left" }}>
+                      {r.employee.full_name || r.employee.code || `#${r.employee.id}`}
+                    </td>
                     <td style={td}>{r.advances.pending_amount.toFixed(2)}</td>
                     <td style={td}>{r.advances.applied_amount.toFixed(2)}</td>
                     <td style={td}>{r.loans.created_count}</td>
@@ -204,6 +326,56 @@ export default function ReportsSummaryPage() {
                   <th style={th}>{total.j_pend}</th>
                   <th style={th}>{total.j_app}</th>
                   <th style={th}>{total.j_rej}</th>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        )}
+      </section>
+
+      {/* NUEVA SECCIÓN: RESUMEN DE HORAS POR EMPLEADO (USANDO /api/metrics/hours) */}
+      <section style={{ ...box }}>
+        <h3 style={{ marginBottom: 8 }}>Horas trabajadas por empleado</h3>
+        {hoursError && <div style={{ color: "crimson", marginBottom: 8 }}>{hoursError}</div>}
+        {hoursLoading ? (
+          <div>Cargando horas…</div>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={{ ...th, textAlign: "left" }}>Empleado</th>
+                <th style={th}>Total horas</th>
+                <th style={th}>Extra día</th>
+                <th style={th}>Extra semana</th>
+              </tr>
+            </thead>
+            <tbody>
+              {hoursRows.length === 0 ? (
+                <tr>
+                  <td style={{ ...td, textAlign: "left" }} colSpan={4}>
+                    Sin datos de horas en el rango.
+                  </td>
+                </tr>
+              ) : (
+                hoursRows.map((r) => (
+                  <tr key={r.employee.id}>
+                    <td style={{ ...td, textAlign: "left" }}>
+                      {r.employee.name || `#${r.employee.id}`}
+                    </td>
+                    <td style={td}>{r.total.toFixed(2)}</td>
+                    <td style={td}>{r.extra_day.toFixed(2)}</td>
+                    <td style={td}>{r.extra_week.toFixed(2)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+            {hoursRows.length > 0 && hoursTotals && (
+              <tfoot>
+                <tr>
+                  <th style={{ ...th, textAlign: "left" }}>Totales</th>
+                  <th style={th}>{hoursTotals.total.toFixed(2)}</th>
+                  <th style={th}>{hoursTotals.extra_day.toFixed(2)}</th>
+                  <th style={th}>{hoursTotals.extra_week.toFixed(2)}</th>
                 </tr>
               </tfoot>
             )}
