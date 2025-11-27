@@ -10,6 +10,8 @@ export type SickLeave = {
   type: SickType;
   notes?: string | null;
   status?: string;      // 'approved' (por ahora)
+  provider?: string | null;
+  coverage_percent?: number | string | null; 
   created_at?: string;
   updated_at?: string;
 };
@@ -31,20 +33,30 @@ export async function createSickLeave(payload: {
   employee_id: number;
   start_date: string;
   end_date: string;
-  type: SickType;
   notes?: string;
+  status?: string;
+  provider?: string;
+  coverage_percent?: number;
 }) {
   const { data } = await api.post('/sick-leaves', payload);
   return data as SickLeave;
 }
 
+
+
 export async function updateSickLeave(
   id: number,
-  payload: Partial<Pick<SickLeave, 'start_date' | 'end_date' | 'type' | 'notes'>>
+  payload: {
+    start_date?: string;
+    end_date?: string;
+    notes?: string;
+    coverage_percent?: number;
+  }
 ) {
   const { data } = await api.patch(`/sick-leaves/${id}`, payload);
   return data as SickLeave;
 }
+
 
 export async function deleteSickLeave(id: number) {
   const { data } = await api.delete(`/sick-leaves/${id}`);

@@ -1,27 +1,29 @@
-import { http } from "@/api/https";
+import api from "@/lib/api";
 
-export interface PayrollSetting {
+export type BaseCurrency = "CRC" | "USD";
+export type FxMode = "none" | "manual" | "daily" | "auto";
+export type RoundingMode = "none" | "half_up" | "down" | "up";
+
+export type PayrollSetting = {
   id: number;
   workday_hours: number;
+  workday_hours_diurnal?: number | null;
+  workday_hours_nocturnal?: number | null;
   overtime_threshold: number;
-  base_currency: "CRC" | "USD";
-  fx_mode: "none" | "manual" | "daily";
+  base_currency: BaseCurrency;
+  fx_mode: FxMode;
   fx_source: string;
-  rounding_mode: "none" | "half_up" | "down" | "up";
-  created_at?: string;
-  updated_at?: string;
-}
+  fx_manual_rate?: number | null;
+  rounding_mode: RoundingMode;
+};
 
-/** Obtiene el registro único de configuración de planilla */
 export async function getPayrollSettings(): Promise<PayrollSetting> {
-  const res = await http.get<PayrollSetting>("/payroll-settings");
-  return res.data;
+  const { data } = await api.get("/payroll-settings");
+  return data as PayrollSetting;
 }
 
-/** Actualiza el registro único de configuración de planilla */
-export async function updatePayrollSettings(
-  payload: Partial<PayrollSetting>
-): Promise<PayrollSetting> {
-  const res = await http.patch<PayrollSetting>("/payroll-settings", payload);
-  return res.data;
+export async function updatePayrollSettings(payload: Partial<PayrollSetting>) {
+  const { data } = await api.patch("/payroll-settings", payload);
+  return data as PayrollSetting;
 }
+

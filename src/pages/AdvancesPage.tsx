@@ -8,6 +8,9 @@ import {
   type Advance,
   type AdvancesResponse,
 } from "@/api/advances";
+import { fmtDate } from "@/lib/fmtDate";
+
+
 
 type Paginated<T> = {
   data: T[];
@@ -286,7 +289,8 @@ export default function AdvancesPage() {
                   <td style={td}>{a.employee_id}</td>
                   <td style={td}>{Number(a.amount).toFixed(2)}</td>
                   <td style={td}>{a.currency}</td>
-                  <td style={td}>{a.granted_at}</td>
+                  <td style={td}>{fmtDate(a.granted_at as any)}</td>
+
                   <td style={td}>
                     <span
                       style={{

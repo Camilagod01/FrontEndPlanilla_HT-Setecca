@@ -14,6 +14,9 @@ import {
   type Currency,
 } from "@/api/loans";
 
+import { fmtDate } from "@/lib/fmtDate";
+
+
 type Paginated<T> = {
   data: T[];
   meta?: {
@@ -513,7 +516,8 @@ export default function LoansPage() {
                   <td style={td}>{l.employee_id}</td>
                   <td style={td}>{Number(l.amount).toFixed(2)}</td>
                   <td style={td}>{l.currency}</td>
-                  <td style={td}>{l.granted_at}</td>
+                  <td style={td}>{fmtDate(l.granted_at as any)}</td>
+
                   <td style={td}>
                     <span
                       style={{
@@ -597,7 +601,8 @@ export default function LoansPage() {
                 {payments.map((p) => (
                   <tr key={p.id}>
                     <td style={td}>{p.id}</td>
-                    <td style={td}>{p.due_date}</td>
+                    <td style={td}>{fmtDate(p.due_date as any)}</td>
+
                     <td style={td}>{Number(p.amount).toFixed(2)}</td>
                     <td style={td}>{p.status}</td>
                     <td style={td}>{p.source}</td>

@@ -19,6 +19,7 @@ import PayrollSettingsPage from "./pages/PayrollSettingsPage";
 import JustificationsPage from "./pages/JustificationsPage";
 import ReportsSummaryPage from "./pages/ReportsSummaryPage";
 import StatementPage from "./pages/StatementPage";
+import AguinaldoPage from "./pages/AguinaldoPage";
 
 
 export default function App() {
@@ -78,6 +79,9 @@ export default function App() {
             {/* Estado de Cuenta */}
             <Route path="/statement" element={<StatementPage />} />
             <Route path="/employees/:id/statement" element={<StatementPage />} />
+
+            {/* Aguinaldo */} 
+            <Route path="/aguinaldo" element={<AguinaldoPage />} />
 
           </Route>
         </Route>

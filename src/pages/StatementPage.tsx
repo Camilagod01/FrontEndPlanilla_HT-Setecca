@@ -104,6 +104,21 @@ export default function StatementPage() {
     [currency]
   );
 
+
+  
+
+  // ===================== NUEVO: normalizar campos de horas =====================
+  const hours = data?.hours as any | undefined;
+
+  const sick50 = hours
+    ? (hours.sick_days_50 ?? hours.sick_50pct_days ?? 0)
+    : 0;
+
+  const sick0 = hours
+    ? (hours.sick_days_0 ?? hours.sick_0pct_days ?? 0)
+    : 0;
+  // ============================================================================
+
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <h1 className="text-2xl font-semibold mb-4">Estado de cuenta</h1>
@@ -184,7 +199,9 @@ export default function StatementPage() {
               </div>
               <div>
                 <div className="text-gray-500 text-sm">Tipo de cambio</div>
-                <div className="font-semibold">₡{data.exchange_rate.toFixed(2)} / USD</div>
+                <div className="font-semibold">
+                  ₡{data.exchange_rate.toFixed(2)} / USD
+                </div>
               </div>
             </div>
           </div>
@@ -192,11 +209,23 @@ export default function StatementPage() {
           <div className="bg-white rounded-xl shadow p-4">
             <h2 className="font-semibold mb-3">Resumen de horas</h2>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
-              <Stat label="Horas 1x" value={data.hours.regular_1x} />
+              {/*<Stat label="Horas 1x" value={data.hours.regular_1x} />
               <Stat label="Horas 1.5x" value={data.hours.overtime_15} />
               <Stat label="Horas 2x" value={data.hours.double_20} />
-              <Stat label="Incap. 50%" value={data.hours.sick_50pct_days} />
-              <Stat label="Incap. 0%" value={data.hours.sick_0pct_days} />
+               Aquí usamos los valores normalizados 
+              <Stat label="Incap. 50%" value={sick50} />
+              <Stat label="Incap. 0%" value={sick0} />*/}
+
+
+
+                <Stat label="Horas 1x" value={data.hours.regular_1x} />
+                <Stat label="Horas 1.5x" value={data.hours.overtime_15} />
+                <Stat label="Horas 2x" value={data.hours.double_20} />
+                <Stat label="Incap. 50%" value={sick50} />
+                <Stat label="Incap. 0%" value={sick0} />
+
+
+
             </div>
           </div>
 
@@ -207,7 +236,12 @@ export default function StatementPage() {
             </div>
             <div className="bg-white rounded-xl shadow p-4">
               <h3 className="font-semibold mb-3">Deducciones</h3>
-              <Table rows={data.deductions} nf={nf} total={data.total_deductions} negative />
+              <Table
+                rows={data.deductions}
+                nf={nf}
+                total={data.total_deductions}
+                negative
+              />
             </div>
           </div>
 
@@ -217,7 +251,18 @@ export default function StatementPage() {
               <span className="font-semibold">
                 {nf.format(data.net)} {data.currency}
               </span>
+
+              {/* Equivalente en colones cuando la moneda es USD y hay tipo de cambio */}
+              {data.currency === "USD" && data.exchange_rate && (
+                <div className="text-sm text-gray-500 mt-1">
+                  ≈ ₡{nf.format(data.net * data.exchange_rate)} CRC{" "}
+                  <span className="text-xs">
+                    (al tipo de cambio {data.exchange_rate.toFixed(2)})
+                  </span>
+                </div>
+              )}
             </div>
+
             <div className="flex gap-3">
               <button
                 onClick={() => handleExport("pdf")}
@@ -239,11 +284,13 @@ export default function StatementPage() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value }: { label: string; value: number | undefined }) {
+  const safeValue = typeof value === "number" ? value : 0;
+
   return (
     <div className="rounded-lg border border-gray-200 p-3">
       <div className="text-gray-500 text-xs">{label}</div>
-      <div className="font-semibold">{value.toFixed(2)}</div>
+      <div className="font-semibold">{safeValue.toFixed(2)}</div>
     </div>
   );
 }
@@ -264,15 +311,23 @@ function Table({
       <table className="min-w-full divide-y divide-gray-200 text-sm">
         <thead className="bg-gray-50">
           <tr>
-            <th className="px-3 py-2 text-left font-medium text-gray-600">Concepto</th>
-            <th className="px-3 py-2 text-right font-medium text-gray-600">Monto</th>
+            <th className="px-3 py-2 text-left font-medium text-gray-600">
+              Concepto
+            </th>
+            <th className="px-3 py-2 text-right font-medium text-gray-600">
+              Monto
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
           {rows.map((r, i) => (
             <tr key={i}>
               <td className="px-3 py-2">{r.label}</td>
-              <td className={`px-3 py-2 text-right ${negative ? "text-red-600" : "text-emerald-700"}`}>
+              <td
+                className={`px-3 py-2 text-right ${
+                  negative ? "text-red-600" : "text-emerald-700"
+                }`}
+              >
                 {nf.format(r.amount)}
               </td>
             </tr>
@@ -281,7 +336,11 @@ function Table({
         <tfoot>
           <tr className="bg-gray-50">
             <td className="px-3 py-2 font-semibold">Total</td>
-            <td className={`px-3 py-2 text-right font-semibold ${negative ? "text-red-700" : "text-emerald-800"}`}>
+            <td
+              className={`px-3 py-2 text-right font-semibold ${
+                negative ? "text-red-700" : "text-emerald-800"
+              }`}
+            >
               {nf.format(total)}
             </td>
           </tr>

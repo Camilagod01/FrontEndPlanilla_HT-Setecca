@@ -15,26 +15,45 @@ export default function PayrollSettingsPage() {
   const [okMsg, setOkMsg] = useState<string | null>(null);
 
   const [form, setForm] = useState<PayrollSetting>({
-    id: 0,
-    workday_hours: 8,
-    overtime_threshold: 8,
-    base_currency: "CRC",
-    fx_mode: "none",
-    fx_source: "manual",
-    rounding_mode: "none",
-  });
+  id: 0,
+  workday_hours: 8,
+  workday_hours_diurnal: 10,
+  workday_hours_nocturnal: 6,
+  overtime_threshold: 8,
+  base_currency: "CRC",
+  fx_mode: "none",
+  fx_source: "manual",
+  rounding_mode: "none",
+});
+
 
   const valid = useMemo(() => {
     const wh = Number(form.workday_hours);
     const ot = Number(form.overtime_threshold);
+
+    const fxModes: Array<PayrollSetting["fx_mode"]> = ["none", "manual", "daily", "auto"];
+    const roundingModes: Array<PayrollSetting["rounding_mode"]> = [
+      "none",
+      "half_up",
+      "down",
+      "up",
+    ];
+
     return (
-      !Number.isNaN(wh) && wh >= 1 && wh <= 24 &&
-      !Number.isNaN(ot) && ot >= 1 && ot <= 24 &&
+      !Number.isNaN(wh) &&
+      wh >= 1 &&
+      wh <= 24 &&
+      !Number.isNaN(ot) &&
+      ot >= 1 &&
+      ot <= 24 &&
       (form.base_currency === "CRC" || form.base_currency === "USD") &&
-      (["none","manual","daily"] as const).includes(form.fx_mode) &&
-      (["none","half_up","down","up"] as const).includes(form.rounding_mode)
+      fxModes.includes(form.fx_mode) &&
+      roundingModes.includes(form.rounding_mode)
     );
   }, [form]);
+  
+
+
 
   async function load() {
     setLoading(true);
@@ -54,29 +73,48 @@ export default function PayrollSettingsPage() {
     load();
   }, []);
 
+
+
   async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!valid) return;
-    setSaving(true);
-    setErrorMsg(null);
-    setOkMsg(null);
-    try {
-      const updated = await updatePayrollSettings({
-        workday_hours: Number(form.workday_hours),
-        overtime_threshold: Number(form.overtime_threshold),
-        base_currency: form.base_currency,
-        fx_mode: form.fx_mode,
-        fx_source: form.fx_source,
-        rounding_mode: form.rounding_mode,
-      });
-      setForm(updated);
-      setOkMsg("Guardado");
-    } catch (e: any) {
-      setErrorMsg(e?.response?.data?.message ?? "No se pudo guardar");
-    } finally {
-      setSaving(false);
-    }
+  e.preventDefault();
+  setSaving(true);
+  setErrorMsg(null);
+  setOkMsg(null);
+
+  try {
+    const updated = await updatePayrollSettings({
+      workday_hours: Number(form.workday_hours),
+
+      // 🔹 Enviamos las horas diurna / nocturna tal cual vengan (o null)
+      workday_hours_diurnal:
+        form.workday_hours_diurnal != null
+          ? Number(form.workday_hours_diurnal)
+          : null,
+
+      workday_hours_nocturnal:
+        form.workday_hours_nocturnal != null
+          ? Number(form.workday_hours_nocturnal)
+          : null,
+
+      overtime_threshold: Number(form.overtime_threshold),
+      base_currency: form.base_currency,
+      fx_mode: form.fx_mode,
+      fx_source: form.fx_source,
+      rounding_mode: form.rounding_mode,
+    });
+
+    setForm(updated);
+    setOkMsg("Guardado");
+  } catch (e: any) {
+    setErrorMsg(e?.response?.data?.message ?? "No se pudo guardar");
+  } finally {
+    setSaving(false);
   }
+}
+
+
+
+
 
   return (
     <div style={{ padding: 16 }}>
@@ -90,17 +128,38 @@ export default function PayrollSettingsPage() {
           {okMsg && <div style={{ color: "seagreen", marginBottom: 8 }}>{okMsg}</div>}
 
           <form onSubmit={onSubmit} style={{ display: "grid", gap: 14 }}>
-            <div style={row}>
-              <label>Horas laborales por día</label>
-              <input
-                type="number"
-                step={0.25}
-                min={1}
-                max={24}
-                value={form.workday_hours}
-                onChange={(e) => setForm((f) => ({ ...f, workday_hours: Number(e.target.value) }))}
-              />
-            </div>
+            
+
+
+          <div style={row}>
+  <label>Horas laborales — jornada diurna</label>
+  <input
+    type="number"
+    step={0.25}
+    min={1}
+    max={24}
+    value={form.workday_hours_diurnal ?? ""}
+    onChange={(e) =>
+      setForm((f) => ({ ...f, workday_hours_diurnal: Number(e.target.value) }))
+    }
+  />
+</div>
+
+<div style={row}>
+  <label>Horas laborales — jornada nocturna</label>
+  <input
+    type="number"
+    step={0.25}
+    min={1}
+    max={24}
+    value={form.workday_hours_nocturnal ?? ""}
+    onChange={(e) =>
+      setForm((f) => ({ ...f, workday_hours_nocturnal: Number(e.target.value) }))
+    }
+  />
+</div>
+
+
 
             <div style={row}>
               <label>Umbral de horas extra por día</label>
@@ -160,10 +219,19 @@ export default function PayrollSettingsPage() {
               </select>
             </div>
 
-            <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
-              <button type="submit" disabled={!valid || saving}>{saving ? "Guardando…" : "Guardar"}</button>
-              <button type="button" onClick={load} disabled={saving}>Recargar</button>
-            </div>
+           
+          <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+  <button type="submit" disabled={saving}>
+    {saving ? "Guardando…" : "Guardar"}
+  </button>
+  <button type="button" onClick={load} disabled={saving}>
+    Recargar
+  </button>
+</div>
+
+
+
+
           </form>
         </section>
       )}

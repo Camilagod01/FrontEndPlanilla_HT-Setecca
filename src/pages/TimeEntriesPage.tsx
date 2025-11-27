@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "../services/api";
+import { fmtDate } from "@/lib/fmtDate";
+
+
 
 interface Employee {
   id: number;
@@ -257,9 +260,9 @@ const saveEdit = async () => {
                 <td className="p-2 border">
                   {r.employee?.code} · {r.employee?.first_name} {r.employee?.last_name}
                 </td>
-                <td className="p-2 border">{r.work_date}</td>
-                <td className="p-2 border">{r.check_in?.slice(11, 16) || "-"}</td>
-                <td className="p-2 border">{r.check_out?.slice(11, 16) || "-"}</td>
+                <td className="p-2 border">{fmtDate(r.work_date as any)}</td>
+                <td className="p-2 border">{r.check_in ? fmtDate(r.check_in as any) : "-"}</td>
+                <td className="p-2 border">{r.check_out ? fmtDate(r.check_out as any) : "-"}</td>
                 <td className="p-2 border">
                   <span
                     className={

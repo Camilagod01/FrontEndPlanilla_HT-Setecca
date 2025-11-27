@@ -7,6 +7,17 @@ import { useEmployeeHours } from "../lib/useEmployeeHours";
 import { downloadBlob } from "../lib/downloadBlob";
 import type { Position } from "../types/position";
 import SickLeavesTab from "@/components/SickLeavesTab";
+import EmployeeVacationsTab from "../components/EmployeeVacationsTab";
+import { getEmployeeAguinaldoByCode, AguinaldoItem } from "@/api/aguinaldo";
+import { getLoanPayments, updateLoanPayment, type LoanPayment } from "@/api/loans";
+
+// DD/MM/YYYY (para algunos casos puntuales)
+const fmtDate = (d?: string | null) => {
+  if (!d) return "-";
+  const x = new Date(d);
+  if (isNaN(x.getTime())) return String(d).slice(0, 10);
+  return x.toLocaleDateString("es-CR");
+};
 
 // ===== Tipos mínimos (flexibles para no romper) =====
 type Maybe<T> = T | null | undefined;
@@ -21,7 +32,7 @@ interface Employee {
   position?: Position | null;
   department?: string;
   work_shift?: string;
-  start_date?: string; // YYYY-MM-DD
+  hire_date?: string; // YYYY-MM-DD
   status?: string; // active|inactive
 }
 
@@ -41,22 +52,50 @@ function getHourlyFromPosition(
   const currency = p?.default_salary_currency ?? p?.currency ?? "CRC";
   if (!p) return { rate: 0, currency };
 
+  const HOURS_PER_MONTH = 173.33;
+
+  // 1) Caso salario por hora
   if (p.salary_type === "hourly") {
     const r = Number(p.default_salary_amount ?? p.base_hourly_rate);
-    return { rate: Number.isFinite(r) && r > 0 ? r : 0, currency };
+    const rate = Number.isFinite(r) && r > 0 ? r : 0;
+
+    if (rate > 0) {
+      const monthly = rate * HOURS_PER_MONTH;
+      return { rate, currency, monthly };
+    }
+
+    return { rate: 0, currency };
   }
 
+  // 2) Caso "legacy" base_hourly_rate con salario mensual desconocido
   const legacy = Number(p.base_hourly_rate);
-  if (Number.isFinite(legacy) && legacy > 0) return { rate: legacy, currency };
+  if (Number.isFinite(legacy) && legacy > 0) {
+    const monthly = legacy * HOURS_PER_MONTH;
+    return { rate: legacy, currency, monthly };
+  }
 
+  // 3) Caso salario mensual (salary_type === "monthly")
   const monthly = Number(p.default_salary_amount);
   if (p.salary_type === "monthly" && Number.isFinite(monthly) && monthly > 0) {
-    const HOURS_PER_MONTH = 173.33;
     const derived = monthly / HOURS_PER_MONTH;
     return { rate: derived, currency, monthly };
   }
 
   return { rate: 0, currency };
+}
+
+// ===== Helper formato fecha estándar dd/mm/yyyy =====
+function formatDate(raw?: string | null) {
+  if (!raw) return "";
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) {
+    return raw.slice(0, 10);
+  }
+  return d.toLocaleDateString("es-CR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 }
 
 // ===== Página principal =====
@@ -76,6 +115,10 @@ export default function EmployeeProfilePage() {
     | "bonus"
     | "statement"
   >("general");
+
+  const [aguinaldo, setAguinaldo] = useState<AguinaldoItem | null>(null);
+  const [loadingAguinaldo, setLoadingAguinaldo] = useState(false);
+  const [errorAguinaldo, setErrorAguinaldo] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -98,89 +141,257 @@ export default function EmployeeProfilePage() {
     };
   }, [id]);
 
-  if (loadingEmp) return <div className="p-4">Cargando empleado…</div>;
-  if (!emp) return <div className="p-4">No se encontró el empleado.</div>;
+  // Cargar aguinaldo del empleado
+  useEffect(() => {
+    if (!emp || !emp.code) return;
+
+    const asOf = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+    const loadAguinaldo = async () => {
+      try {
+        setLoadingAguinaldo(true);
+        setErrorAguinaldo(null);
+
+        const data = await getEmployeeAguinaldoByCode(emp.code, asOf);
+        setAguinaldo(data);
+      } catch (err) {
+        console.error(err);
+        setErrorAguinaldo("No se pudo cargar el aguinaldo de este empleado.");
+        setAguinaldo(null);
+      } finally {
+        setLoadingAguinaldo(false);
+      }
+    };
+
+    loadAguinaldo();
+  }, [emp]);
+
+  if (loadingEmp)
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="bg-white border border-slate-200 shadow-sm rounded-2xl px-4 py-3 text-sm text-slate-700">
+          Cargando empleado…
+        </div>
+      </div>
+    );
+
+  if (!emp)
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="bg-white border border-rose-200 text-rose-700 shadow-sm rounded-2xl px-4 py-3 text-sm">
+          No se encontró el empleado.
+        </div>
+      </div>
+    );
 
   const { rate: hourlyRate, currency: hourlyCurrency } = getHourlyFromPosition(
     emp.position
   );
 
+  const statusLabel =
+    emp.status === "inactive" ? "Inactivo" : emp.status ? "Activo" : "Activo";
+  const statusColor =
+    emp.status === "inactive"
+      ? "bg-rose-50 text-rose-700 border border-rose-200"
+      : "bg-emerald-50 text-emerald-700 border border-emerald-200";
+
   return (
-    <div className="p-4 max-w-6xl mx-auto">
-      <h1 className="text-2xl font-semibold mb-1">
-        Perfil: {emp.first_name} {emp.last_name} {emp.code ? `( #${emp.code} )` : ""}
-      </h1>
-      <div className="text-sm text-gray-600 mb-4">
-        {[emp.department, emp.position?.name].filter(Boolean).join(" · ")}
+    <div className="min-h-screen bg-slate-50">
+      <div className="max-w-6xl mx-auto px-4 py-6 lg:py-8">
+        {/* Header de perfil */}
+        <div className="mb-5 bg-white border border-slate-200 rounded-2xl shadow-sm p-4 md:p-5">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl md:text-3xl font-semibold text-slate-900 flex flex-wrap items-center gap-2">
+                <span>
+                  Perfil: {emp.first_name} {emp.last_name}
+                </span>
+                {emp.code && (
+                  <span className="text-sm font-medium text-slate-500">
+                    (#{emp.code})
+                  </span>
+                )}
+              </h1>
+              <div className="mt-1 text-sm text-slate-500 flex flex-wrap gap-2">
+                {[emp.department, emp.position?.name]
+                  .filter(Boolean)
+                  .map((chunk, idx) => (
+                    <span key={idx} className="inline-flex items-center gap-1">
+                      {idx > 0 && (
+                        <span className="w-1 h-1 rounded-full bg-slate-300" />
+                      )}
+                      <span>{chunk}</span>
+                    </span>
+                  ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col items-start md:items-end gap-2 text-xs text-slate-500">
+              <div className={`inline-flex items-center px-2 py-1 rounded-full ${statusColor}`}>
+                <span className="w-1.5 h-1.5 rounded-full bg-current/60 mr-1.5" />
+                <span className="font-medium text-[11px] uppercase tracking-wide">
+                  {statusLabel}
+                </span>
+              </div>
+              <div className="space-y-0.5 text-xs">
+                <div className="flex gap-1">
+                  <span className="font-medium text-slate-600">ID interno:</span>
+                  <span className="text-slate-800">{emp.id}</span>
+                </div>
+                {emp.hire_date && (
+                  <div className="flex gap-1">
+                    <span className="font-medium text-slate-600">
+                      Fecha inicio:
+                    </span>
+                    <span className="text-slate-800">
+                      {formatDate(emp.hire_date)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="mt-5">
+            <div className="inline-flex flex-wrap gap-1 bg-slate-100/80 border border-slate-200 rounded-xl p-1">
+              {(
+                [
+                  ["general", "Datos generales"],
+                  ["hours", "Horas laboradas"],
+                  ["sick", "Incapacidades"],
+                  ["punches", "Marcaciones"],
+                  ["finance", "Finanzas"],
+                  ["vacations", "Vacaciones"],
+                  ["bonus", "Aguinaldo"],
+                  ["statement", "Estado de cuenta"],
+                ] as const
+              ).map(([key, label]) => {
+                const active = tab === key;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setTab(key)}
+                    className={[
+                      "px-3 py-1.5 rounded-lg text-xs md:text-sm font-medium transition-colors",
+                      active
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/60",
+                    ].join(" ")}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Contenido de pestañas */}
+        {tab === "general" && <GeneralSection emp={emp} onUpdated={setEmp} />}
+
+        {tab === "hours" && (
+          <HoursSection
+            empId={Number(id)}
+            hourlyRate={hourlyRate}
+            currency={hourlyCurrency}
+          />
+        )}
+
+        {tab === "sick" && (
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 md:p-5">
+            <SickLeavesTab employeeId={emp.id} />
+          </div>
+        )}
+
+        {tab === "punches" && (
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 md:p-5">
+            <PunchesSection empId={Number(id)} />
+          </div>
+        )}
+
+        {tab === "finance" && (
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 md:p-5">
+            <FinanceSection empId={Number(id)} />
+          </div>
+        )}
+
+        {tab === "vacations" && (
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 md:p-5">
+            <EmployeeVacationsTab employeeId={emp.id} />
+          </div>
+        )}
+
+        {tab === "bonus" && (
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 md:p-5">
+            <h2 className="text-lg font-semibold mb-3 text-slate-900">
+              Aguinaldo
+            </h2>
+
+            {loadingAguinaldo && <p>Cargando aguinaldo…</p>}
+
+            {errorAguinaldo && (
+              <p className="text-red-600 text-sm">{errorAguinaldo}</p>
+            )}
+
+            {!loadingAguinaldo && !errorAguinaldo && aguinaldo && (
+              <div className="border border-slate-200 rounded-xl p-3 bg-slate-50/80 text-sm space-y-1.5">
+                <p className="text-slate-600">
+                  Período considerado:{" "}
+                  <strong className="text-slate-900">
+                    {aguinaldo.period.from} — {aguinaldo.period.to}
+                  </strong>
+                </p>
+                <p>
+                  Base (salarios acumulados):{" "}
+                  <strong className="text-slate-900">
+                    {new Intl.NumberFormat("es-CR", {
+                      style: "currency",
+                      currency: aguinaldo.currency || "CRC",
+                    }).format(aguinaldo.base_total)}
+                  </strong>
+                </p>
+                <p>
+                  Aguinaldo estimado:{" "}
+                  <strong className="text-slate-900">
+                    {new Intl.NumberFormat("es-CR", {
+                      style: "currency",
+                      currency: aguinaldo.currency || "CRC",
+                    }).format(aguinaldo.aguinaldo)}
+                  </strong>
+                </p>
+              </div>
+            )}
+
+            {!loadingAguinaldo && !errorAguinaldo && !aguinaldo && (
+              <p className="text-sm text-slate-600">
+                No hay información de aguinaldo para este empleado.
+              </p>
+            )}
+          </div>
+        )}
+
+        {tab === "statement" && (
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 md:p-5">
+            <StatementShortcut
+              employeeCode={emp.code}
+              onOpen={(code, from, to) => {
+                navigate(
+                  `/statement?employee_code=${encodeURIComponent(
+                    code
+                  )}&from=${from}&to=${to}&auto=1`
+                );
+              }}
+            />
+          </div>
+        )}
       </div>
-
-      <div className="flex gap-2 mb-6">
-        {(
-          [
-            ["general", "Datos generales"],
-            ["hours", "Horas laboradas"],
-            ["sick", "Incapacidades"],
-            ["punches", "Marcaciones"],
-            ["finance", "Finanzas"],
-            ["vacations", "Vacaciones"],
-            ["bonus", "Aguinaldo"],
-            ["statement", "Estado de cuenta"], // NUEVA pestaña
-          ] as const
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={`px-3 py-2 rounded ${
-              tab === key ? "bg-black text-white" : "bg-gray-100"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {tab === "general" && <GeneralSection emp={emp} onUpdated={setEmp} />}
-
-      {tab === "hours" && (
-        <HoursSection
-          empId={Number(id)}
-          hourlyRate={hourlyRate}
-          currency={hourlyCurrency}
-        />
-      )}
-
-      {tab === "sick" && <SickLeavesTab employeeId={emp.id} />}
-      {tab === "punches" && <PunchesSection empId={Number(id)} />}
-      {tab === "finance" && <FinanceSection empId={Number(id)} />}
-      {tab === "vacations" && (
-        <Placeholder text="Vacaciones (pendiente de diseño y API)" />
-      )}
-      {tab === "bonus" && (
-        <Placeholder text="Aguinaldo (pendiente de diseño y API)" />
-      )}
-
-      {tab === "statement" && (
-        <StatementShortcut
-          employeeCode={emp.code}
-          onOpen={(code, from, to) => {
-            // Abrimos la página Statement con auto=1
-            navigate(
-              `/statement?employee_code=${encodeURIComponent(
-                code
-              )}&from=${from}&to=${to}&auto=1`
-            );
-          }}
-        />
-      )}
     </div>
   );
 }
 
-function Placeholder({ text }: { text: string }) {
-  return <div className="p-4 border rounded bg-yellow-50">{text}</div>;
-}
-
 /* ===== (a) Datos generales ===== */
+
 function GeneralSection({
   emp,
   onUpdated,
@@ -189,18 +400,45 @@ function GeneralSection({
   onUpdated: (e: Employee) => void;
 }) {
   const [form, setForm] = useState({
+    first_name: emp.first_name ?? "",
+    last_name: emp.last_name ?? "",
+    code: emp.code ?? "",
     email: emp.email ?? "",
-    work_shift: emp.work_shift ?? "",
-    start_date: emp.start_date ?? "",
+    work_shift: (emp as any).work_shift ?? "",
+    hire_date: (emp as any).hire_date ?? "",
     status: emp.status === "inactive" ? "inactive" : "active",
   });
+
   const [saving, setSaving] = useState(false);
+  const [editMode, setEditMode] = useState(false);
 
   const [positions, setPositions] = useState<Position[]>([]);
   const [selectedPos, setSelectedPos] = useState<number | "">(
     emp.position_id ?? ""
   );
-  const [savingPos, setSavingPos] = useState(false);
+
+  useEffect(() => {
+    setForm({
+      first_name: emp.first_name ?? "",
+      last_name: emp.last_name ?? "",
+      code: emp.code ?? "",
+      email: emp.email ?? "",
+      work_shift: (emp as any).work_shift ?? "",
+      hire_date: (emp as any).hire_date ?? "",
+      status: emp.status === "inactive" ? "inactive" : "active",
+    });
+    setSelectedPos(emp.position_id ?? "");
+  }, [
+    emp.id,
+    emp.first_name,
+    emp.last_name,
+    emp.code,
+    emp.email,
+    emp.work_shift,
+    emp.hire_date,
+    emp.status,
+    emp.position_id,
+  ]);
 
   useEffect(() => {
     (async () => {
@@ -213,15 +451,15 @@ function GeneralSection({
           ? raw.data
           : [];
         setPositions(list);
-        setSelectedPos(emp.position_id ?? "");
       } catch (e) {
         console.error(e);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [emp.id]);
 
-  const onChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const onChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
   };
@@ -230,168 +468,315 @@ function GeneralSection({
     try {
       setSaving(true);
       await api.put(`/employees/${emp.id}`, form);
+
+      if ((emp.position_id ?? "") !== selectedPos) {
+        const payload = {
+          position_id: selectedPos === "" ? null : Number(selectedPos),
+        };
+        await api.patch(`/employees/${emp.id}/position`, payload);
+      }
+
       const rereq = await api.get(`/employees/${emp.id}`, {
         params: { include: "position" },
       });
       const fresh = (rereq.data as any)?.data ?? rereq.data;
       onUpdated(fresh as Employee);
+
+      setEditMode(false);
       alert("Cambios guardados");
     } catch (err: any) {
-      console.error("PUT /employees error", err?.response?.status, err?.response?.data);
+      console.error(
+        "PUT /employees / position error",
+        err?.response?.status,
+        err?.response?.data
+      );
       alert(err?.response?.data?.message ?? "No se pudo guardar");
     } finally {
       setSaving(false);
     }
   };
 
-  const onSavePosition = async () => {
-    try {
-      setSavingPos(true);
-      const payload = {
-        position_id: selectedPos === "" ? null : Number(selectedPos),
-      };
-      const up = await api.patch(`/employees/${emp.id}/position`, payload);
-
-      const fresh = (up.data as any) ?? null;
-      if (fresh && (fresh.position || fresh.position_id !== undefined)) {
-        onUpdated(fresh as Employee);
-      } else {
-        const rereq = await api.get(`/employees/${emp.id}`, {
-          params: { include: "position" },
-        });
-        onUpdated(((rereq.data as any)?.data ?? rereq.data) as Employee);
-      }
-      alert("Puesto actualizado");
-    } catch (e: any) {
-      console.error("update position error", e?.response?.status, e?.response?.data);
-      alert(e?.response?.data?.message || "No se pudo actualizar el puesto");
-    } finally {
-      setSavingPos(false);
-    }
+  const onCancelEdit = () => {
+    setForm({
+      first_name: emp.first_name ?? "",
+      last_name: emp.last_name ?? "",
+      code: emp.code ?? "",
+      email: emp.email ?? "",
+      work_shift: emp.work_shift ?? "",
+      hire_date: emp.hire_date ?? "",
+      status: emp.status === "inactive" ? "inactive" : "active",
+    });
+    setSelectedPos(emp.position_id ?? "");
+    setEditMode(false);
   };
 
+  const allPositions = Array.isArray(positions) ? positions : [];
+
+  let positionForSalary: Position | undefined = emp.position as any;
+
+  if (typeof selectedPos === "number") {
+    const found = allPositions.find((p) => p.id === selectedPos);
+    if (found) {
+      positionForSalary = found;
+    }
+  }
+
   const { rate: salaryRate, currency: salaryCurrency, monthly } =
-    getHourlyFromPosition(emp.position);
+    getHourlyFromPosition(positionForSalary);
 
   return (
-    <div className="grid gap-4 max-w-2xl">
-      {/* Tarjeta de puesto y salario — con editor */}
-      <div className="border rounded p-3">
-        <h3 className="font-medium mb-2">Puesto y salario</h3>
-
-        {/* Selector de puesto */}
-        <div className="flex flex-wrap items-end gap-2 mb-3">
-          <label className="grid">
-            <span className="text-sm">Puesto</span>
-            <select
-              className="border p-2 rounded min-w-[240px]"
-              value={selectedPos}
-              onChange={(e) =>
-                setSelectedPos(e.target.value === "" ? "" : Number(e.target.value))
-              }
+    <div className="grid gap-4 max-w-4xl">
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 md:p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-semibold text-slate-900">
+              Datos generales del empleado
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Información básica, puesto asignado y salario base.
+            </p>
+          </div>
+          {!editMode && (
+            <button
+              className="text-xs md:text-sm px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 font-medium text-slate-700"
+              onClick={() => setEditMode(true)}
             >
-              <option value="">(sin puesto)</option>
-              {(Array.isArray(positions) ? positions : []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} {p.code ? `(${p.code})` : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="px-3 py-2 border rounded disabled:opacity-50"
-            disabled={savingPos || (emp.position_id ?? "") === selectedPos}
-            onClick={onSavePosition}
-          >
-            {savingPos ? "Guardando…" : "Guardar puesto"}
-          </button>
+              Editar datos
+            </button>
+          )}
         </div>
 
-        <p>
-          <strong>Puesto:</strong>{" "}
-          {emp.position?.name
-            ? `${emp.position.name}${emp.position.code ? ` (${emp.position.code})` : ""}`
-            : "—"}
-        </p>
-        <p>
-          <strong>Salario base por hora:</strong>{" "}
-          {salaryRate > 0
-            ? `${salaryCurrency === "USD" ? "$" : "₡"}${salaryRate.toLocaleString()} ${salaryCurrency}`
-            : "—"}
-        </p>
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* Nombre */}
+          <label className="grid gap-1 text-sm">
+            <span className="text-slate-600">Nombre</span>
+            {editMode ? (
+              <input
+                className="border border-slate-300 focus:border-slate-500 focus:ring-1 focus:ring-slate-500/40 rounded-lg px-3 py-2 text-sm outline-none"
+                name="first_name"
+                value={form.first_name}
+                onChange={onChange}
+              />
+            ) : (
+              <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900">
+                {emp.first_name || "—"}
+              </div>
+            )}
+          </label>
 
-        {/* Si viene mensual, mostrar también */}
-        {typeof monthly === "number" && monthly > 0 && (
-          <p className="text-sm text-gray-600">
-            Salario base mensual:{" "}
-            {`${salaryCurrency === "USD" ? "$" : "₡"}${monthly.toLocaleString()} ${salaryCurrency}`}{" "}
-            (tarifa horaria estimada con 173.33 h/mes)
-          </p>
+          {/* Apellidos */}
+          <label className="grid gap-1 text-sm">
+            <span className="text-slate-600">Apellidos</span>
+            {editMode ? (
+              <input
+                className="border border-slate-300 focus:border-slate-500 focus:ring-1 focus:ring-slate-500/40 rounded-lg px-3 py-2 text-sm outline-none"
+                name="last_name"
+                value={form.last_name}
+                onChange={onChange}
+              />
+            ) : (
+              <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900">
+                {emp.last_name || "—"}
+              </div>
+            )}
+          </label>
+
+          {/* Código empleado */}
+          <label className="grid gap-1 text-sm">
+            <span className="text-slate-600">Código empleado</span>
+            {editMode ? (
+              <input
+                className="border border-slate-300 focus:border-slate-500 focus:ring-1 focus:ring-slate-500/40 rounded-lg px-3 py-2 text-sm outline-none"
+                name="code"
+                value={form.code}
+                onChange={onChange}
+              />
+            ) : (
+              <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900">
+                {emp.code || "—"}
+              </div>
+            )}
+          </label>
+
+          {/* ID interno */}
+          <label className="grid gap-1 text-sm">
+            <span className="text-slate-600">ID interno</span>
+            <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900">
+              {emp.id}
+            </div>
+          </label>
+
+          {/* Puesto asignado */}
+          <label className="grid gap-1 text-sm">
+            <span className="text-slate-600">Puesto asignado</span>
+            {editMode ? (
+              <select
+                className="border border-slate-300 focus:border-slate-500 focus:ring-1 focus:ring-slate-500/40 rounded-lg px-3 py-2 text-sm outline-none"
+                value={selectedPos}
+                onChange={(e) =>
+                  setSelectedPos(
+                    e.target.value === "" ? "" : Number(e.target.value)
+                  )
+                }
+              >
+                <option value="">(sin puesto)</option>
+                {(Array.isArray(positions) ? positions : []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} {p.code ? `(${p.code})` : ""}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900">
+                {(() => {
+                  const anyEmp: any = emp;
+                  if (emp.position?.name) {
+                    return `${emp.position.name}${
+                      emp.position.code ? ` (${emp.position.code})` : ""
+                    }`;
+                  }
+                  if (typeof selectedPos === "number") {
+                    const p = positions.find((p) => p.id === selectedPos);
+                    if (p) {
+                      return `${p.name}${p.code ? ` (${p.code})` : ""}`;
+                    }
+                  }
+                  if (anyEmp.position_name) return anyEmp.position_name;
+                  return "—";
+                })()}
+              </div>
+            )}
+          </label>
+
+          {/* Fecha inicio */}
+          <label className="grid gap-1 text-sm">
+            <span className="text-slate-600">Fecha inicio</span>
+            {editMode ? (
+              <input
+                type="date"
+                className="border border-slate-300 focus:border-slate-500 focus:ring-1 focus:ring-slate-500/40 rounded-lg px-3 py-2 text-sm outline-none"
+                name="hire_date"
+                value={form.hire_date}
+                onChange={onChange}
+              />
+            ) : (
+              <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900">
+                {(emp as any).hire_date
+                  ? formatDate((emp as any).hire_date)
+                  : "—"}
+              </div>
+            )}
+          </label>
+
+          {/* Estado */}
+          <label className="grid gap-1 text-sm">
+            <span className="text-slate-600">Estado</span>
+            {editMode ? (
+              <select
+                className="border border-slate-300 focus:border-slate-500 focus:ring-1 focus:ring-slate-500/40 rounded-lg px-3 py-2 text-sm outline-none"
+                name="status"
+                value={form.status}
+                onChange={onChange}
+              >
+                <option value="active">Activo</option>
+                <option value="inactive">Inactivo</option>
+              </select>
+            ) : (
+              <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900">
+                {emp.status === "inactive" ? "Inactivo" : "Activo"}
+              </div>
+            )}
+          </label>
+
+          {/* Email */}
+          <label className="grid gap-1 text-sm">
+            <span className="text-slate-600">Email</span>
+            {editMode ? (
+              <input
+                className="border border-slate-300 focus:border-slate-500 focus:ring-1 focus:ring-slate-500/40 rounded-lg px-3 py-2 text-sm outline-none"
+                name="email"
+                value={form.email}
+                onChange={onChange}
+              />
+            ) : (
+              <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900">
+                {emp.email || "—"}
+              </div>
+            )}
+          </label>
+
+          {/* Jornada */}
+          <label className="grid gap-1 text-sm">
+            <span className="text-slate-600">Jornada</span>
+            {editMode ? (
+              <select
+                className="border border-slate-300 focus:border-slate-500 focus:ring-1 focus:ring-slate-500/40 rounded-lg px-3 py-2 text-sm outline-none"
+                name="work_shift"
+                value={form.work_shift}
+                onChange={onChange}
+              >
+                <option value="">Selecciona…</option>
+                <option value="diurna">Diurna</option>
+                <option value="nocturna">Nocturna</option>
+                <option value="mixta">Mixta</option>
+              </select>
+            ) : (
+              <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900">
+                {(emp as any).work_shift || "—"}
+              </div>
+            )}
+          </label>
+
+          {/* Salario hora */}
+          <label className="grid gap-1 text-sm">
+            <span className="text-slate-600">Salario base por hora</span>
+            <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900">
+              {salaryRate > 0
+                ? `${
+                    salaryCurrency === "USD" ? "$" : "₡"
+                  }${salaryRate.toLocaleString()} ${salaryCurrency}`
+                : "—"}
+            </div>
+          </label>
+
+          {/* Salario mensual */}
+          <label className="grid gap-1 text-sm">
+            <span className="text-slate-600">Salario base mensual</span>
+            <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-700">
+              {typeof monthly === "number" && monthly > 0
+                ? `${
+                    salaryCurrency === "USD" ? "$" : "₡"
+                  }${monthly.toLocaleString()} ${salaryCurrency} (estimado)`
+                : "—"}
+            </div>
+          </label>
+        </div>
+
+        {editMode && (
+          <div className="flex flex-wrap gap-2 mt-5">
+            <button
+              disabled={saving}
+              onClick={onSave}
+              className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+            >
+              {saving ? "Guardando…" : "Guardar cambios"}
+            </button>
+            <button
+              type="button"
+              onClick={onCancelEdit}
+              className="px-4 py-2 rounded-lg border border-slate-300 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              Cancelar
+            </button>
+          </div>
         )}
       </div>
-
-      {/* Campos editables */}
-      <label className="grid gap-1">
-        <span>Email</span>
-        <input
-          className="border p-2 rounded"
-          name="email"
-          value={form.email}
-          onChange={onChange}
-        />
-      </label>
-
-      <label className="grid gap-1">
-        <span>Jornada</span>
-        <select
-          className="border p-2 rounded"
-          name="work_shift"
-          value={form.work_shift}
-          onChange={onChange}
-        >
-          <option value="">Selecciona…</option>
-          <option value="diurna">Diurna</option>
-          <option value="nocturna">Nocturna</option>
-          <option value="mixta">Mixta</option>
-        </select>
-      </label>
-
-      <label className="grid gap-1">
-        <span>Fecha inicio</span>
-        <input
-          type="date"
-          className="border p-2 rounded"
-          name="start_date"
-          value={form.start_date}
-          onChange={onChange}
-        />
-      </label>
-
-      <label className="grid gap-1">
-        <span>Estado</span>
-        <select
-          className="border p-2 rounded"
-          name="status"
-          value={form.status}
-          onChange={onChange}
-        >
-          <option value="active">Activo</option>
-          <option value="inactive">Inactivo</option>
-        </select>
-      </label>
-
-      <button
-        disabled={saving}
-        onClick={onSave}
-        className="bg-blue-600 text-white px-4 py-2 rounded"
-      >
-        {saving ? "Guardando…" : "Guardar cambios"}
-      </button>
     </div>
   );
 }
 
 /* ===== (b) Horas ===== */
+
 function HoursSection({
   empId,
   hourlyRate,
@@ -409,7 +794,7 @@ function HoursSection({
   const toNum = (v: any, def = 0) => {
     const n = Number(v);
     return Number.isFinite(n) ? n : def;
-    };
+  };
   const pickNum = (...vals: any[]) => {
     for (const v of vals) {
       const n = Number(v);
@@ -429,7 +814,10 @@ function HoursSection({
   const total = toNum(d?.total_hours ?? d?.totalHours ?? d?.total, sumDays);
 
   const ot: any = d?.overtime ?? d?.ot ?? {};
-  const dailyThreshold = toNum(ot?.daily_threshold ?? d?.rules?.daily_base ?? d?.rules?.dailyLimit, 8);
+  const dailyThreshold = toNum(
+    ot?.daily_threshold ?? d?.rules?.daily_base ?? d?.rules?.dailyLimit,
+    8
+  );
 
   let dailyOH = pickNum(
     ot?.daily_hours,
@@ -482,61 +870,46 @@ function HoursSection({
     })} ${currency}`;
 
   return (
-    <div className="grid gap-3">
-      <div className="flex gap-2 items-end">
-        <label className="grid">
-          <span>Desde</span>
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 md:p-5">
+      <div className="flex flex-wrap gap-3 items-end mb-4">
+        <label className="grid text-sm">
+          <span className="text-slate-600 mb-1">Desde</span>
           <input
             type="date"
-            className="border p-2 rounded"
+            className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-slate-500 focus:ring-1 focus:ring-slate-500/40 outline-none"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
           />
         </label>
-        <label className="grid">
-          <span>Hasta</span>
+        <label className="grid text-sm">
+          <span className="text-slate-600 mb-1">Hasta</span>
           <input
             type="date"
-            className="border p-2 rounded"
+            className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-slate-500 focus:ring-1 focus:ring-slate-500/40 outline-none"
             value={to}
             onChange={(e) => setTo(e.target.value)}
           />
         </label>
+
+        <div className="ml-auto text-xs text-slate-500">
+          Total:{" "}
+          <span className="font-semibold text-slate-900">
+            {total.toFixed(2)} h
+          </span>{" "}
+          · Estimado:{" "}
+          <span className="font-semibold text-slate-900">
+            {money(payTotal)}
+          </span>
+        </div>
       </div>
 
       <EmployeeHoursCard result={data} loading={loading} error={error} />
-
-      <div className="mt-4 border rounded p-3">
-        <h3 className="font-medium mb-2">Salario estimado</h3>
-
-        {rate <= 0 ? (
-          <div className="text-sm text-red-700">
-            Este empleado no tiene definida una tarifa por hora en su puesto.
-          </div>
-        ) : (
-          <div className="text-sm space-y-1">
-            <div>
-              <strong>Tarifa:</strong> {money(rate)} / hora
-            </div>
-            <div className="mt-2">
-              <strong>Horas del período:</strong> {total.toFixed(2)} h
-            </div>
-            <ul className="list-disc pl-5">
-              <li>Regulares: {regularHours.toFixed(2)} h → {money(payRegular)}</li>
-              <li>Extra (día): {dailyOH.toFixed(2)} h × {mDaily} → {money(payDailyOT)}</li>
-              <li>Extra (semana): {weeklyOH.toFixed(2)} h × {mWeekly} → {money(payWeeklyOT)}</li>
-            </ul>
-            <div className="mt-2 text-lg">
-              <strong>Total estimado: {money(payTotal)}</strong>
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
 
 /* ===== (c) Marcaciones ===== */
+
 function PunchesSection({ empId }: { empId: number }) {
   const [date, setDate] = useState("");
   const [status, setStatus] = useState("");
@@ -634,21 +1007,22 @@ function PunchesSection({ empId }: { empId: number }) {
 
   return (
     <div className="grid gap-4">
-      <div className="flex flex-wrap gap-2 items-end">
-        <label className="grid">
-          <span>Fecha (tabla)</span>
+      {/* Filtros */}
+      <div className="flex flex-wrap gap-3 items-end">
+        <label className="grid text-sm">
+          <span className="text-slate-600 mb-1">Fecha (tabla)</span>
           <input
             type="date"
-            className="border p-2 rounded"
+            className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-slate-500 focus:ring-1 focus:ring-slate-500/40 outline-none"
             value={date}
             onChange={(e) => setDate(e.target.value)}
           />
         </label>
 
-        <label className="grid">
-          <span>Status</span>
+        <label className="grid text-sm">
+          <span className="text-slate-600 mb-1">Estado</span>
           <select
-            className="border p-2 rounded"
+            className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-slate-500 focus:ring-1 focus:ring-slate-500/40 outline-none"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
           >
@@ -661,28 +1035,28 @@ function PunchesSection({ empId }: { empId: number }) {
 
         <button
           onClick={applyFilters}
-          className="bg-gray-900 text-white px-4 py-2 rounded"
+          className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium"
         >
           {loading ? "Buscando…" : "Filtrar"}
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-2 items-end">
-        <label className="grid">
-          <span>Desde (export)</span>
+      <div className="flex flex-wrap gap-3 items-end">
+        <label className="grid text-sm">
+          <span className="text-slate-600 mb-1">Desde (export)</span>
           <input
             type="date"
-            className="border p-2 rounded"
+            className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-slate-500 focus:ring-1 focus:ring-slate-500/40 outline-none"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
           />
         </label>
 
-        <label className="grid">
-          <span>Hasta (export)</span>
+        <label className="grid text-sm">
+          <span className="text-slate-600 mb-1">Hasta (export)</span>
           <input
             type="date"
-            className="border p-2 rounded"
+            className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-slate-500 focus:ring-1 focus:ring-slate-500/40 outline-none"
             value={to}
             onChange={(e) => setTo(e.target.value)}
           />
@@ -690,7 +1064,7 @@ function PunchesSection({ empId }: { empId: number }) {
 
         <button
           onClick={handleExportCSV}
-          className="px-3 py-2 border rounded disabled:opacity-50"
+          className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           disabled={exporting}
           aria-label="Exportar marcaciones del empleado en CSV"
           title="Exportar CSV"
@@ -698,35 +1072,56 @@ function PunchesSection({ empId }: { empId: number }) {
           {exporting ? "Exportando…" : "Exportar CSV"}
         </button>
 
-        <div className="text-xs text-gray-500">
-          Tip: si no defines “Desde/Hasta”, usa la fecha del filtro de tabla.
+        <div className="text-xs text-slate-500">
+          Tip: si no defines “Desde/Hasta”, se usa la fecha del filtro de tabla.
         </div>
       </div>
 
-      <div className="overflow-auto border rounded">
+      {/* Tabla */}
+      <div className="overflow-auto border border-slate-200 rounded-xl shadow-sm bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-gray-100">
+          <thead className="bg-slate-50">
             <tr>
-              <th className="text-left p-2">Fecha</th>
-              <th className="text-left p-2">Entrada</th>
-              <th className="text-left p-2">Salida</th>
-              <th className="text-left p-2">Notas</th>
-              <th className="text-left p-2">Origen</th>
+              <th className="text-left px-3 py-2 text-xs font-medium text-slate-600">
+                Fecha
+              </th>
+              <th className="text-left px-3 py-2 text-xs font-medium text-slate-600">
+                Entrada
+              </th>
+              <th className="text-left px-3 py-2 text-xs font-medium text-slate-600">
+                Salida
+              </th>
+              <th className="text-left px-3 py-2 text-xs font-medium text-slate-600">
+                Notas
+              </th>
+              <th className="text-left px-3 py-2 text-xs font-medium text-slate-600">
+                Origen
+              </th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id} className="border-t">
-                <td className="p-2">{r.work_date}</td>
-                <td className="p-2">{r.check_in ?? "-"}</td>
-                <td className="p-2">{r.check_out ?? "-"}</td>
-                <td className="p-2">{r.notes ?? ""}</td>
-                <td className="p-2">{r.source ?? ""}</td>
+              <tr key={r.id} className="border-t border-slate-100">
+                <td className="px-3 py-2 text-slate-800">
+                  {formatDate(r.work_date)}
+                </td>
+                <td className="px-3 py-2 text-slate-800">
+                  {r.check_in ? formatDate(r.check_in as any) : "-"}
+                </td>
+                <td className="px-3 py-2 text-slate-800">
+                  {r.check_out ? formatDate(r.check_out as any) : "-"}
+                </td>
+                <td className="px-3 py-2 text-slate-700">
+                  {r.notes ?? ""}
+                </td>
+                <td className="px-3 py-2 text-slate-700">
+                  {r.source ?? ""}
+                </td>
               </tr>
             ))}
             {!rows.length && (
               <tr>
-                <td className="p-3" colSpan={5}>
+                <td className="px-3 py-3 text-sm text-slate-500" colSpan={5}>
                   Sin registros
                 </td>
               </tr>
@@ -735,7 +1130,8 @@ function PunchesSection({ empId }: { empId: number }) {
         </table>
       </div>
 
-      <div className="flex items-center gap-2">
+      {/* Paginación */}
+      <div className="flex items-center gap-2 text-xs text-slate-600">
         <button
           disabled={meta.current_page <= 1}
           onClick={() => {
@@ -743,7 +1139,7 @@ function PunchesSection({ empId }: { empId: number }) {
             setPage(p);
             fetchEntries(p);
           }}
-          className="px-3 py-1 border rounded"
+          className="px-3 py-1 border border-slate-300 rounded-lg bg-white disabled:opacity-40"
         >
           «
         </button>
@@ -757,7 +1153,7 @@ function PunchesSection({ empId }: { empId: number }) {
             setPage(p);
             fetchEntries(p);
           }}
-          className="px-3 py-1 border rounded"
+          className="px-3 py-1 border border-slate-300 rounded-lg bg-white disabled:opacity-40"
         >
           »
         </button>
@@ -767,79 +1163,470 @@ function PunchesSection({ empId }: { empId: number }) {
 }
 
 /* ===== (d) Finanzas ===== */
+
+interface EmployeeAdvanceRow {
+  id: number;
+  issued_at?: string;
+  amount: number | string;
+  currency?: string;
+  status?: string;
+  notes?: string;
+}
+
+interface EmployeeLoanRow {
+  id: number;
+  employee_id?: number;
+  granted_at?: string;
+  amount?: number | string;
+  currency?: string;
+  status?: string;
+  notes?: string;
+}
+
+interface EmployeeGarnishmentRow {
+  id: number;
+  description?: string;
+  amount?: number | string;
+  currency?: string;
+  active?: boolean;
+}
+
+const formatMoney = (
+  value: number | string | undefined | null,
+  currency?: string
+) => {
+  let n = 0;
+
+  if (typeof value === "number") {
+    n = value;
+  } else if (typeof value === "string") {
+    const match = value.match(/-?\d+[.,]?\d*/);
+    if (match) {
+      const normalized = match[0].replace(",", ".");
+      const parsed = Number(normalized);
+      if (Number.isFinite(parsed)) n = parsed;
+    }
+  }
+
+  return new Intl.NumberFormat("es-CR", {
+    style: "currency",
+    currency: currency || "CRC",
+  }).format(n);
+};
+
 function FinanceSection({ empId }: { empId: number }) {
   const [loading, setLoading] = useState(false);
-  const [totals, setTotals] = useState({
-    advances: 0,
-    loans: 0,
-    garnishments: 0,
-  });
+  const [advances, setAdvances] = useState<EmployeeAdvanceRow[]>([]);
+  const [loans, setLoans] = useState<EmployeeLoanRow[]>([]);
+  const [garnishments, setGarnishments] = useState<EmployeeGarnishmentRow[]>([]);
 
-  const fetchFinance = async () => {
+  const [selectedLoanId, setSelectedLoanId] = useState<number | null>(null);
+  const [payments, setPayments] = useState<LoanPayment[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+
+  const markPaymentPaid = async (paymentId: number) => {
     try {
-      setLoading(true);
-      const [adv, loans, garn] = await Promise.all([
-        api.get("/finances/advances", { params: { employee_id: empId } }),
-        api.get("/finances/loans", { params: { employee_id: empId } }),
-        api.get("/finances/garnishments", { params: { employee_id: empId } }),
-      ]);
+      await updateLoanPayment(paymentId, { action: "mark_paid" });
 
-      const sum = (data: any, pick: (x: any) => number) => {
-        if (Array.isArray(data)) return data.reduce((a, b) => a + (pick(b) || 0), 0);
-        if (typeof data?.total === "number") return data.total;
-        return 0;
-      };
-
-      const advancesSum = sum(adv.data, (x) => x.amount ?? x.total ?? 0);
-      const loansSum = sum(loans.data, (x) => x.balance ?? x.amount ?? x.total ?? 0);
-      const garnSum = sum(garn.data, (x) => x.amount ?? x.total ?? 0);
-
-      setTotals({
-        advances: advancesSum,
-        loans: loansSum,
-        garnishments: garnSum,
-      });
+      if (selectedLoanId) {
+        const rows = await getLoanPayments(selectedLoanId);
+        setPayments(rows);
+      }
     } catch (err) {
       console.error(err);
-      alert("No se pudo cargar finanzas");
-    } finally {
-      setLoading(false);
+      alert("No se pudo marcar como pagada la cuota.");
+    }
+  };
+
+  const markPaymentSkipped = async (paymentId: number) => {
+    try {
+      await updateLoanPayment(paymentId, { action: "mark_skipped" });
+
+      if (selectedLoanId) {
+        const rows = await getLoanPayments(selectedLoanId);
+        setPayments(rows);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("No se pudo marcar como omitida la cuota.");
+    }
+  };
+
+  const reschedulePayment = async (paymentId: number) => {
+    const newDate = prompt("Nueva fecha (YYYY-MM-DD):");
+    if (!newDate) return;
+
+    try {
+      await updateLoanPayment(paymentId, {
+        action: "reschedule",
+        due_date: newDate,
+      });
+
+      if (selectedLoanId) {
+        const rows = await getLoanPayments(selectedLoanId);
+        setPayments(rows);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("No se pudo reprogramar la cuota.");
     }
   };
 
   useEffect(() => {
-    fetchFinance();
+    (async () => {
+      try {
+        setLoading(true);
+
+        const [advRes, loanRes, garnRes] = await Promise.all([
+          api.get("/advances", { params: { employee_id: empId, per_page: 100 } }),
+          api.get("/loans", { params: { employee_id: empId, per_page: 100 } }),
+          api.get("/garnishments", {
+            params: { employee_id: empId, per_page: 100 },
+          }),
+        ]);
+
+        const normalizeList = (raw: any): any[] => {
+          if (Array.isArray(raw)) return raw;
+          if (Array.isArray(raw?.data)) return raw.data;
+          return [];
+        };
+
+        setAdvances(normalizeList(advRes.data));
+        setLoans(normalizeList(loanRes.data));
+        setGarnishments(normalizeList(garnRes.data));
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [empId]);
 
-  return (
-    <div className="grid md:grid-cols-3 gap-4">
-      <Metric title="Adelantos" value={totals.advances} loading={loading} />
-      <Metric title="Préstamos" value={totals.loans} loading={loading} />
-      <Metric title="Embargos" value={totals.garnishments} loading={loading} />
-    </div>
-  );
-}
+  const openLoanPayments = async (loanId: number) => {
+    try {
+      setSelectedLoanId(loanId);
+      setLoadingPayments(true);
+      setPayments([]);
 
-function Metric({
-  title,
-  value,
-  loading,
-}: {
-  title: string;
-  value: number;
-  loading: boolean;
-}) {
+      const rows = await getLoanPayments(loanId);
+      setPayments(rows);
+    } catch (err) {
+      console.error(err);
+      alert("No se pudieron cargar las cuotas del préstamo.");
+    } finally {
+      setLoadingPayments(false);
+    }
+  };
+
+  const closeLoanPayments = () => {
+    setSelectedLoanId(null);
+    setPayments([]);
+  };
+
   return (
-    <div className="p-4 border rounded">
-      <div className="text-sm text-gray-500">{title}</div>
-      <div className="text-3xl font-semibold">
-        {loading ? "…" : `₡${Number(value).toLocaleString()}`}
-      </div>
+    <div className="grid gap-6">
+      {/* Adelantos */}
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-base font-semibold text-slate-900">Adelantos</h2>
+        </div>
+        {advances.length === 0 ? (
+          <p className="text-sm text-slate-600">
+            Este empleado no tiene adelantos registrados.
+          </p>
+        ) : (
+          <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-sm bg-white">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-2 py-1.5 border-b border-slate-200 text-left text-xs font-medium text-slate-600">
+                    Fecha
+                  </th>
+                  <th className="px-2 py-1.5 border-b border-slate-200 text-left text-xs font-medium text-slate-600">
+                    Monto
+                  </th>
+                  <th className="px-2 py-1.5 border-b border-slate-200 text-left text-xs font-medium text-slate-600">
+                    Estado
+                  </th>
+                  <th className="px-2 py-1.5 border-b border-slate-200 text-left text-xs font-medium text-slate-600">
+                    Notas
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {advances.map((a) => {
+                  const anyAdv: any = a;
+                  const rawDate =
+                    anyAdv.issued_at ||
+                    anyAdv.date ||
+                    anyAdv.created_at ||
+                    "";
+
+                  return (
+                    <tr key={a.id} className="border-t border-slate-100">
+                      <td className="px-2 py-1.5 border-slate-100">
+                        {fmtDate(rawDate)}
+                      </td>
+                      <td className="px-2 py-1.5 border-slate-100">
+                        {formatMoney(a.amount, a.currency)}
+                      </td>
+                      <td className="px-2 py-1.5 border-slate-100">
+                        {a.status ?? anyAdv.status ?? "-"}
+                      </td>
+                      <td className="px-2 py-1.5 border-slate-100">
+                        {a.notes ?? anyAdv.notes ?? "-"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* Préstamos */}
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-base font-semibold text-slate-900">Préstamos</h2>
+        </div>
+
+        {loans.length === 0 ? (
+          <p className="text-sm text-slate-600">
+            Este empleado no tiene préstamos registrados.
+          </p>
+        ) : (
+          <>
+            <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-sm bg-white">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-2 py-1.5 border-b border-slate-200 text-left text-xs font-medium text-slate-600">
+                      ID
+                    </th>
+                    <th className="px-2 py-1.5 border-b border-slate-200 text-left text-xs font-medium text-slate-600">
+                      Fecha otorgado
+                    </th>
+                    <th className="px-2 py-1.5 border-b border-slate-200 text-left text-xs font-medium text-slate-600">
+                      Monto original
+                    </th>
+                    <th className="px-2 py-1.5 border-b border-slate-200 text-left text-xs font-medium text-slate-600">
+                      Estado
+                    </th>
+                    <th className="px-2 py-1.5 border-b border-slate-200 text-left text-xs font-medium text-slate-600">
+                      Descripción
+                    </th>
+                    <th className="px-2 py-1.5 border-b border-slate-200 text-left text-xs font-medium text-slate-600">
+                      Cuotas
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loans.map((l) => {
+                    const anyLoan: any = l;
+
+                    const rawDate =
+                      anyLoan.granted_at ||
+                      anyLoan.start_date ||
+                      anyLoan.created_at ||
+                      anyLoan.date ||
+                      "";
+
+                    const original = anyLoan.amount;
+                    const status =
+                      anyLoan.status ?? anyLoan.state ?? "-";
+                    const description =
+                      anyLoan.notes ?? anyLoan.description ?? "-";
+
+                    return (
+                      <tr key={anyLoan.id} className="border-t border-slate-100">
+                        <td className="px-2 py-1.5">{anyLoan.id}</td>
+                        <td className="px-2 py-1.5">
+                          {fmtDate(rawDate)}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          {formatMoney(original, anyLoan.currency)}
+                        </td>
+                        <td className="px-2 py-1.5">{status}</td>
+                        <td className="px-2 py-1.5">{description}</td>
+                        <td className="px-2 py-1.5">
+                          <button
+                            className="text-xs px-2 py-1 border border-slate-300 rounded-lg hover:bg-slate-50"
+                            onClick={() => openLoanPayments(anyLoan.id)}
+                          >
+                            Ver cuotas
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {selectedLoanId && (
+              <div className="mt-4 border border-slate-200 rounded-xl p-3 bg-slate-50/60">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-semibold text-sm text-slate-900">
+                    Cuotas del préstamo #{selectedLoanId}
+                  </h3>
+                  <button
+                    className="text-xs px-2 py-1 border border-slate-300 rounded-lg bg-white hover:bg-slate-50"
+                    onClick={closeLoanPayments}
+                  >
+                    Cerrar
+                  </button>
+                </div>
+
+                {loadingPayments && (
+                  <p className="text-xs text-slate-600">
+                    Cargando cuotas…
+                  </p>
+                )}
+
+                {!loadingPayments && payments.length === 0 && (
+                  <p className="text-xs text-slate-600">
+                    Sin cuotas registradas.
+                  </p>
+                )}
+
+                {!loadingPayments && payments.length > 0 && (
+                  <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-2 py-1.5 border-b border-slate-200 text-left text-[11px] font-medium text-slate-600">
+                            ID
+                          </th>
+                          <th className="px-2 py-1.5 border-b border-slate-200 text-left text-[11px] font-medium text-slate-600">
+                            Vence
+                          </th>
+                          <th className="px-2 py-1.5 border-b border-slate-200 text-left text-[11px] font-medium text-slate-600">
+                            Monto
+                          </th>
+                          <th className="px-2 py-1.5 border-b border-slate-200 text-left text-[11px] font-medium text-slate-600">
+                            Estado
+                          </th>
+                          <th className="px-2 py-1.5 border-b border-slate-200 text-left text-[11px] font-medium text-slate-600">
+                            Fuente
+                          </th>
+                          <th className="px-2 py-1.5 border-b border-slate-200 text-left text-[11px] font-medium text-slate-600">
+                            Notas
+                          </th>
+                          <th className="px-2 py-1.5 border-b border-slate-200 text-left text-[11px] font-medium text-slate-600">
+                            Acciones
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {payments.map((p) => (
+                          <tr key={p.id} className="border-t border-slate-100">
+                            <td className="px-2 py-1.5">{p.id}</td>
+                            <td className="px-2 py-1.5">
+                              {fmtDate(p.due_date)}
+                            </td>
+                            <td className="px-2 py-1.5">
+                              {formatMoney(p.amount, "CRC")}
+                            </td>
+                            <td className="px-2 py-1.5">{p.status}</td>
+                            <td className="px-2 py-1.5">
+                              {p.source ?? "-"}
+                            </td>
+                            <td className="px-2 py-1.5">
+                              {p.remarks ?? ""}
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <div className="flex gap-1 flex-wrap">
+                                <button
+                                  className="text-[11px] px-2 py-1 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-40"
+                                  disabled={p.status === "paid"}
+                                  onClick={() => markPaymentPaid(p.id)}
+                                >
+                                  Pagar
+                                </button>
+                                <button
+                                  className="text-[11px] px-2 py-1 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-40"
+                                  disabled={p.status !== "pending"}
+                                  onClick={() => markPaymentSkipped(p.id)}
+                                >
+                                  Omitir
+                                </button>
+                                <button
+                                  className="text-[11px] px-2 py-1 border border-slate-300 rounded-lg hover:bg-slate-50"
+                                  onClick={() => reschedulePayment(p.id)}
+                                >
+                                  Reprogramar
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </section>
+
+      {/* Embargos */}
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-base font-semibold text-slate-900">Embargos</h2>
+        </div>
+        {garnishments.length === 0 ? (
+          <p className="text-sm text-slate-600">
+            Este empleado no tiene embargos registrados.
+          </p>
+        ) : (
+          <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-sm bg-white">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-2 py-1.5 border-b border-slate-200 text-left text-xs font-medium text-slate-600">
+                    Descripción
+                  </th>
+                  <th className="px-2 py-1.5 border-b border-slate-200 text-left text-xs font-medium text-slate-600">
+                    Monto
+                  </th>
+                  <th className="px-2 py-1.5 border-b border-slate-200 text-left text-xs font-medium text-slate-600">
+                    Estado
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {garnishments.map((g) => (
+                  <tr key={g.id} className="border-t border-slate-100">
+                    <td className="px-2 py-1.5">
+                      {g.description ?? "-"}
+                    </td>
+                    <td className="px-2 py-1.5">
+                      {formatMoney(g.amount, g.currency)}
+                    </td>
+                    <td className="px-2 py-1.5">
+                      {g.active ? "Activo" : "Inactivo"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {loading && (
+        <p className="text-xs text-slate-500 mt-1">
+          Cargando información financiera…
+        </p>
+      )}
     </div>
   );
 }
 
 /* ===== (e) Atajo a Estado de Cuenta ===== */
+
 function StatementShortcut({
   employeeCode,
   onOpen,
@@ -851,37 +1638,42 @@ function StatementShortcut({
   const [to, setTo] = useState(dayjs().endOf("month").format("YYYY-MM-DD"));
 
   return (
-    <div className="border rounded p-4 max-w-xl">
-      <h3 className="font-medium mb-3">Estado de cuenta</h3>
+    <div className="max-w-xl">
+      <h3 className="font-semibold text-slate-900 mb-3">
+        Estado de cuenta
+      </h3>
 
       {!employeeCode ? (
-        <div className="text-sm text-red-700">
-          Este empleado no tiene <code>code</code> asignado (ej. <code>emp-0003</code>).
+        <div className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
+          Este empleado no tiene <code>code</code> asignado (ej.{" "}
+          <code>emp-0003</code>).
         </div>
       ) : (
-        <>
-          <div className="grid grid-cols-2 gap-3 mb-3">
+        <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50/70 text-sm space-y-3">
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <div className="text-xs text-gray-600">Código</div>
-              <div className="font-semibold">{employeeCode}</div>
+              <div className="text-xs text-slate-500 mb-0.5">Código</div>
+              <div className="font-semibold text-slate-900">
+                {employeeCode}
+              </div>
             </div>
-            <div className="text-xs text-gray-600 self-end">
-              Rango:
+            <div className="text-xs text-slate-500 self-end">
+              Rango de fechas
             </div>
-            <label className="grid">
-              <span className="text-xs text-gray-600">Desde</span>
+            <label className="grid text-xs">
+              <span className="text-slate-500 mb-1">Desde</span>
               <input
                 type="date"
-                className="border p-2 rounded"
+                className="border border-slate-300 rounded-lg px-3 py-1.5 text-xs focus:border-slate-500 focus:ring-1 focus:ring-slate-500/40 outline-none bg-white"
                 value={from}
                 onChange={(e) => setFrom(e.target.value)}
               />
             </label>
-            <label className="grid">
-              <span className="text-xs text-gray-600">Hasta</span>
+            <label className="grid text-xs">
+              <span className="text-slate-500 mb-1">Hasta</span>
               <input
                 type="date"
-                className="border p-2 rounded"
+                className="border border-slate-300 rounded-lg px-3 py-1.5 text-xs focus:border-slate-500 focus:ring-1 focus:ring-slate-500/40 outline-none bg-white"
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
               />
@@ -889,12 +1681,12 @@ function StatementShortcut({
           </div>
 
           <button
-            className="bg-gray-900 text-white px-4 py-2 rounded"
+            className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium"
             onClick={() => onOpen(employeeCode, from, to)}
           >
             Ver estado de cuenta
           </button>
-        </>
+        </div>
       )}
     </div>
   );

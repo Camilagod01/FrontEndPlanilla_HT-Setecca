@@ -192,28 +192,32 @@ export default function EmployeeCreatePage() {
               <p className="text-sm text-gray-600">No hay puestos. Crea algunos primero.</p>
             )}
 
+            
+
             {!loadingPositions && positions.length > 0 && (
-              <div role="radiogroup" aria-label="Selecciona un puesto" className="border rounded p-2 max-h-48 overflow-auto">
-                {positions.map((p) => (
-                  <label key={p.id} className="flex items-center gap-2 py-1">
-                    <input
-                      type="radio"
-                      name="position_id"
-                      value={p.id}
-                      checked={form.position_id === p.id}
-                      onChange={setField}
-                      required
-                      {...(fieldErr("position_id")
-                        ? { "aria-invalid": true, "aria-describedby": errId("position_id") }
-                        : {})}
-                    />
-                    <span>
-                      {p.name} 
-                    </span>
-                  </label>
-                ))}
-              </div>
-            )}
+  <select
+    name="position_id"
+    className="border rounded p-2 w-full"
+    value={form.position_id ?? ""}
+    onChange={setField}
+    required
+    {...(fieldErr("position_id")
+      ? { "aria-invalid": true, "aria-describedby": errId("position_id") }
+      : {})}
+  >
+    <option value="">Selecciona un puesto…</option>
+    {positions.map((p) => (
+      <option key={p.id} value={p.id}>
+        {p.name}
+      </option>
+    ))}
+  </select>
+)}
+
+
+
+
+
             {fieldErr("position_id") && (
               <span id={errId("position_id")} className="text-red-600 text-sm" role="alert">
                 {fieldErr("position_id")}
