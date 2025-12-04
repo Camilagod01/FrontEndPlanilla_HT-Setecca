@@ -109,9 +109,21 @@ const handleChange = (e: any) => {
         work_shift: form.work_shift,
 
       };
+      
       const res = await api.post("/employees", payload);
-      const emp = res.data;
-      nav(`/employees/${emp.id}`);
+
+// El backend devuelve { data: { ...empleado... } }
+const raw = res.data as any;
+const emp = raw.data ?? raw;
+
+if (!emp?.id) {
+  alert("Empleado creado, pero no se pudo obtener el ID para redirigir.");
+  return;
+}
+
+nav(`/employees/${emp.id}`);
+
+
     } catch (err: any) {
       const data = err?.response?.data;
       if (data?.errors) setErrors(data.errors as Errors);

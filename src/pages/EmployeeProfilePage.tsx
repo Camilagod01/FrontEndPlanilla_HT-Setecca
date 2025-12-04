@@ -1829,7 +1829,7 @@ function StatementShortcut({
           </div>
 
           <button
-            className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium"
+            className="bg-slate-900 text-black px-4 py-2 rounded-lg text-sm font-medium"
             onClick={() => onOpen(employeeCode, from, to)}
           >
             Ver estado de cuenta
