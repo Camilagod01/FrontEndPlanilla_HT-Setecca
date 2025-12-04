@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getStatement, exportStatement, StatementResponse } from "../services/statement";
 import dayjs from "dayjs";
+import { runPayroll } from "../services/payrolls";
+
 
 function useQuery() {
   return new URLSearchParams(useLocation().search);
@@ -25,6 +27,10 @@ export default function StatementPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<StatementResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+
+  const [runningPayroll, setRunningPayroll] = useState(false);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // Auto-consultar si viene ?employee_code=...&auto=1
   useEffect(() => {
@@ -92,6 +98,47 @@ export default function StatementPage() {
       );
     }
   }
+
+
+  async function handleRunPayroll() {
+  if (!data) return;
+
+  setError(null);
+  setSuccessMsg(null);
+
+  try {
+    setRunningPayroll(true);
+
+    const res = await runPayroll({
+      employee_id: data.employee.id,
+      from: data.period.from,
+      to: data.period.to,
+    });
+
+    // Soporte para dos formatos de respuesta: { ok, payroll: {...} } o directamente {id, gross,...}
+    const p: any = res.payroll ?? res;
+
+    if (!p || typeof p.net === "undefined") {
+      setSuccessMsg("Planilla generada correctamente.");
+      return;
+    }
+
+    setSuccessMsg(
+      `Planilla generada: bruto ${nf.format(p.gross)} — deducciones ${nf.format(
+        p.deductions ?? 0
+      )} — neto ${nf.format(p.net)} ${p.currency ?? data.currency}`
+    );
+  } catch (e: any) {
+    setError(
+      e?.response?.data?.message ||
+        e?.message ||
+        "No se pudo generar la planilla."
+    );
+  } finally {
+    setRunningPayroll(false);
+  }
+}
+
 
   const currency = data?.currency ?? "CRC";
   const nf = useMemo(
@@ -161,12 +208,13 @@ export default function StatementPage() {
 
         <div className="flex items-end">
           <button
-            onClick={handleFetch}
-            className="w-full inline-flex items-center justify-center rounded-lg bg-indigo-600 text-white px-4 py-2 font-medium hover:bg-indigo-700 disabled:opacity-60"
-            disabled={loading || !employeeCode.trim()}
-          >
-            {loading ? "Cargando..." : "Consultar"}
-          </button>
+  onClick={handleFetch}
+  className="w-full inline-flex items-center justify-center rounded-lg border border-indigo-500 bg-white text-indigo-700 px-4 py-2 font-semibold hover:bg-indigo-50 disabled:opacity-60 disabled:cursor-not-allowed"
+  disabled={loading || !employeeCode.trim()}
+>
+  {loading ? "Cargando..." : "Consultar"}
+</button>
+
         </div>
       </div>
 
@@ -175,6 +223,13 @@ export default function StatementPage() {
           {error}
         </div>
       )}
+
+      {successMsg && (
+  <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-700">
+    {successMsg}
+  </div>
+)}
+
 
       {data && (
         <div className="space-y-6">
@@ -246,38 +301,47 @@ export default function StatementPage() {
           </div>
 
           <div className="bg-white rounded-xl shadow p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="text-lg">
-              <span className="text-gray-600">Neto:</span>{" "}
-              <span className="font-semibold">
-                {nf.format(data.net)} {data.currency}
-              </span>
+  <div className="text-lg">
+    <span className="text-gray-600">Neto:</span>{" "}
+    <span className="font-semibold">
+      {nf.format(data.net)} {data.currency}
+    </span>
 
-              {/* Equivalente en colones cuando la moneda es USD y hay tipo de cambio */}
-              {data.currency === "USD" && data.exchange_rate && (
-                <div className="text-sm text-gray-500 mt-1">
-                  ≈ ₡{nf.format(data.net * data.exchange_rate)} CRC{" "}
-                  <span className="text-xs">
-                    (al tipo de cambio {data.exchange_rate.toFixed(2)})
-                  </span>
-                </div>
-              )}
-            </div>
+    {data.currency === "USD" && data.exchange_rate && (
+      <div className="text-sm text-gray-500 mt-1">
+        ≈ ₡{nf.format(data.net * data.exchange_rate)} CRC{" "}
+        <span className="text-xs">
+          (al tipo de cambio {data.exchange_rate.toFixed(2)})
+        </span>
+      </div>
+    )}
+  </div>
 
-            <div className="flex gap-3">
-              <button
-                onClick={() => handleExport("pdf")}
-                className="inline-flex items-center rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-50"
-              >
-                Exportar PDF
-              </button>
-              <button
-                onClick={() => handleExport("excel")}
-                className="inline-flex items-center rounded-lg bg-emerald-600 text-white px-4 py-2 hover:bg-emerald-700"
-              >
-                Exportar Excel
-              </button>
-            </div>
-          </div>
+  <div className="flex flex-wrap gap-3">
+    <button
+      onClick={() => handleExport("pdf")}
+      className="inline-flex items-center rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-50"
+    >
+      Exportar PDF
+    </button>
+    <button
+      onClick={() => handleExport("excel")}
+      className="inline-flex items-center rounded-lg bg-emerald-600 text-white px-4 py-2 hover:bg-emerald-700"
+    >
+      Exportar Excel
+    </button>
+    <button
+      onClick={handleRunPayroll}
+      disabled={runningPayroll || !data}
+      className="inline-flex items-center rounded-lg bg-indigo-600 text-white px-4 py-2 hover:bg-indigo-700 disabled:opacity-60"
+    >
+      {runningPayroll ? "Generando planilla..." : "Generar planilla"}
+    </button>
+  </div>
+</div>
+
+
+
         </div>
       )}
     </div>

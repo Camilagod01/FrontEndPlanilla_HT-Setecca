@@ -378,7 +378,7 @@ async function loadEmployees() {
             <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={3} />
           </div>
 
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8}}>
             <button type="submit" disabled={!formValid}>{editingId ? "Guardar" : "Crear"}</button>
             {editingId && (
               <button

@@ -1,13 +1,38 @@
-import React, { useEffect, useState } from 'react';
-import { getAguinaldo, AguinaldoIndexResponse, AguinaldoItem } from '@/api/aguinaldo';
+import React, { useEffect, useState } from "react";
+import { getAguinaldo, AguinaldoIndexResponse, AguinaldoItem } from "@/api/aguinaldo";
+
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
 const formatCurrency = (value: number, currency: string) => {
-  return new Intl.NumberFormat('es-CR', {
-    style: 'currency',
-    currency: currency || 'CRC',
+  return new Intl.NumberFormat("es-CR", {
+    style: "currency",
+    currency: currency || "CRC",
     minimumFractionDigits: 2,
   }).format(value);
+};
+
+// Estilos reutilizables (mismo estilo de "tarjeta" que en otros módulos)
+const cardStyle: React.CSSProperties = {
+  background: "#ffffff",
+  borderRadius: 8,
+  border: "1px solid #e5e7eb",
+  padding: 16,
+  boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+  marginBottom: 16,
+};
+
+const th: React.CSSProperties = {
+  textAlign: "left",
+  padding: 8,
+  borderBottom: "1px solid #e5e7eb",
+  background: "#f9fafb",
+  fontSize: 13,
+};
+
+const td: React.CSSProperties = {
+  padding: 8,
+  borderBottom: "1px solid #f3f4f6",
+  fontSize: 13,
 };
 
 const AguinaldoPage: React.FC = () => {
@@ -24,7 +49,7 @@ const AguinaldoPage: React.FC = () => {
       setData(res);
     } catch (err) {
       console.error(err);
-      setError('No se pudo cargar el cálculo de aguinaldo.');
+      setError("No se pudo cargar el cálculo de aguinaldo.");
     } finally {
       setLoading(false);
     }
@@ -40,104 +65,182 @@ const AguinaldoPage: React.FC = () => {
     fetchData(asOf);
   };
 
+  // Totales por moneda
+  let totalCRC = 0;
+  let totalUSD = 0;
+  if (data && data.items.length > 0) {
+    for (const item of data.items) {
+      if (item.currency === "CRC") {
+        totalCRC += item.aguinaldo;
+      } else if (item.currency === "USD") {
+        totalUSD += item.aguinaldo;
+      }
+    }
+  }
+
   return (
     <div className="page-container">
-      <h1>Aguinaldo</h1>
+      <h1 style={{ marginBottom: 12 }}>Aguinaldo</h1>
 
-      <form onSubmit={handleSubmit} style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-        <label>
-          Fecha de corte:
-          <input
-            type="date"
-            value={asOf}
-            onChange={(e) => setAsOf(e.target.value)}
-            style={{ marginLeft: '0.5rem' }}
-          />
-        </label>
-        <button type="submit" disabled={loading}>
-          {loading ? 'Calculando…' : 'Actualizar'}
-        </button>
-      </form>
+      {/* Tarjeta de filtros / fecha de corte */}
+      <section style={cardStyle}>
+        <form
+          onSubmit={handleSubmit}
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "0.75rem",
+            alignItems: "center",
+          }}
+        >
+          <label style={{ fontSize: 14 }}>
+            <span style={{ marginRight: 8 }}>Fecha de corte:</span>
+            <input
+              type="date"
+              value={asOf}
+              onChange={(e) => setAsOf(e.target.value)}
+              style={{
+                padding: "4px 6px",
+                borderRadius: 6,
+                border: "1px solid #d1d5db",
+                fontSize: 14,
+              }}
+            />
+          </label>
 
-      {error && <div style={{ color: 'red' }}>{error}</div>}
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-3 py-2 bg-blue-600 text-gray-800 rounded hover:bg-blue-700 disabled:opacity-50"
+            style={{ fontSize: 14 }}
+          >
+            {loading ? "Calculando…" : "Actualizar"}
+          </button>
+        </form>
 
-      {data && (
-        <>
-          <p style={{ fontSize: '0.9rem', color: '#666' }}>
-            Fecha de corte usada: <strong>{data.as_of}</strong>
-          </p>
+        <p
+          style={{
+            fontSize: 12,
+            color: "#6b7280",
+            marginTop: 8,
+          }}
+        >
+          Fecha de corte usada: <strong>{data?.as_of ?? asOf}</strong>
+        </p>
 
-          <div style={{ overflowX: 'auto', marginTop: '0.5rem' }}>
-            <table className="table table-striped table-hover">
-              <thead>
-                <tr>
-                  <th>Código</th>
-                  <th>Empleado</th>
-                  <th>Período</th>
-                  <th>Base (salarios acumulados)</th>
-                  <th>Aguinaldo</th>
-                  <th>Moneda</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.items.length === 0 && (
-                  <tr>
-                    <td colSpan={6} style={{ textAlign: 'center' }}>
-                      No hay empleados activos para calcular aguinaldo.
-                    </td>
-                  </tr>
-                )}
-
-                {data.items.map((item: AguinaldoItem) => (
-                  <tr key={item.employee.id}>
-                    <td>{item.employee.code}</td>
-                    <td>{item.employee.full_name}</td>
-                    <td>
-                      {item.period.from} — {item.period.to}
-                    </td>
-                    <td>{formatCurrency(item.base_total, item.currency)}</td>
-                    <td>
-                      <strong>{formatCurrency(item.aguinaldo, item.currency)}</strong>
-                    </td>
-                    <td>{item.currency}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {error && (
+          <div
+            style={{
+              marginTop: 8,
+              padding: "8px 10px",
+              borderRadius: 6,
+              background: "#fef2f2",
+              color: "#b91c1c",
+              fontSize: 13,
+            }}
+          >
+            {error}
           </div>
+        )}
+      </section>
 
-          {/*NUEVO BLOQUE: TOTAL DE AGUINALDO */}
-    
-                {/* 👇 NUEVO BLOQUE: TOTALES POR MONEDA */}
-{data.items.length > 0 && (() => {
-  const totalCRC = data.items
-    .filter(item => item.currency === "CRC")
-    .reduce((sum, item) => sum + item.aguinaldo, 0);
+      {/* Tarjeta con tabla + totales */}
+      <section style={cardStyle}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 8,
+            alignItems: "baseline",
+            marginBottom: 8,
+          }}
+        >
+          <div>
+            <strong>Resumen de aguinaldo</strong>
+            <div style={{ fontSize: 12, color: "#6b7280" }}>
+              Cálculo acumulado por empleado según salarios del período.
+            </div>
+          </div>
+        </div>
 
-  const totalUSD = data.items
-    .filter(item => item.currency === "USD")
-    .reduce((sum, item) => sum + item.aguinaldo, 0);
+        {loading && !data && <p style={{ fontSize: 14 }}>Cargando cálculo de aguinaldo…</p>}
 
-  return (
-    <div style={{ marginTop: '0.75rem', textAlign: 'right' }}>
-      {totalCRC > 0 && (
-        <div><strong>Total aguinaldo (CRC): {formatCurrency(totalCRC, "CRC")}</strong></div>
-      )}
-      {totalUSD > 0 && (
-        <div><strong>Total aguinaldo (USD): {formatCurrency(totalUSD, "USD")}</strong></div>
-      )}
-      {(totalCRC === 0 && totalUSD === 0) && (
-        <div><strong>Total aguinaldo: ₡0.00</strong></div>
-      )}
-    </div>
-  );
-})()}
+        {data && (
+          <>
+            <div style={{ overflowX: "auto", marginTop: 4 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={th}>Código</th>
+                    <th style={th}>Empleado</th>
+                    <th style={th}>Período</th>
+                    <th style={th}>Base (salarios acumulados)</th>
+                    <th style={th}>Aguinaldo</th>
+                    <th style={th}>Moneda</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.items.length === 0 && (
+                    <tr>
+                      <td colSpan={6} style={{ padding: 12, textAlign: "center", fontSize: 13 }}>
+                        No hay empleados activos para calcular aguinaldo.
+                      </td>
+                    </tr>
+                  )}
 
+                  {data.items.map((item: AguinaldoItem) => (
+                    <tr key={item.employee.id}>
+                      <td style={td}>{item.employee.code}</td>
+                      <td style={td}>{item.employee.full_name}</td>
+                      <td style={td}>
+                        {item.period.from} — {item.period.to}
+                      </td>
+                      <td style={td}>{formatCurrency(item.base_total, item.currency)}</td>
+                      <td style={{ ...td, fontWeight: 600 }}>
+                        {formatCurrency(item.aguinaldo, item.currency)}
+                      </td>
+                      <td style={td}>{item.currency}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
-        </>
-      )}
-
-      {loading && !data && <p>Cargando cálculo de aguinaldo…</p>}
+            {/* Totales alineados, dentro de la misma tarjeta */}
+            <div
+              style={{
+                borderTop: "1px solid #e5e7eb",
+                marginTop: 12,
+                paddingTop: 8,
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+                alignItems: "flex-end",
+                fontSize: 13,
+              }}
+            >
+              {totalCRC > 0 && (
+                <div>
+                  <strong>Total aguinaldo (CRC): </strong>
+                  <span>{formatCurrency(totalCRC, "CRC")}</span>
+                </div>
+              )}
+              {totalUSD > 0 && (
+                <div>
+                  <strong>Total aguinaldo (USD): </strong>
+                  <span>{formatCurrency(totalUSD, "USD")}</span>
+                </div>
+              )}
+              {totalCRC === 0 && totalUSD === 0 && (
+                <div>
+                  <strong>Total aguinaldo: </strong>
+                  <span>₡0,00</span>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </section>
     </div>
   );
 };

@@ -165,12 +165,16 @@ export default function PositionsPage() {
             <option value="0">Inactivos</option>
           </select>
         </label>
+        
         <button
-          className="px-3 py-2 bg-black text-white rounded"
-          onClick={() => fetchData(1)}
-        >
-          {loading ? "Buscando…" : "Filtrar"}
-        </button>
+  className="px-3 py-2 bg-blue-600 text-gray-800 rounded hover:bg-blue-700 disabled:opacity-60"
+  onClick={() => fetchData(1)}
+  disabled={loading}
+>
+  {loading ? "Buscando…" : "Filtrar"}
+</button>
+
+
         <div className="flex-1" />
         <button className="px-3 py-2 border rounded" onClick={openCreate}>
           + Nuevo puesto

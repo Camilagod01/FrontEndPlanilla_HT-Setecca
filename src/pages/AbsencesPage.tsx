@@ -172,10 +172,19 @@ export default function AbsencesPage() {
     <div style={{ padding: 16 }}>
       <h2 style={{ marginBottom: 12 }}>Permisos / Ausencias</h2>
 
+
       {/* Filtros */}
       <section style={{ ...box, marginBottom: 12 }}>
         <strong>Filtros</strong>
-        <div style={{ display: "grid", gridTemplateColumns: "320px 140px 160px 160px 160px auto", gap: 8, marginTop: 8, alignItems: "center" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "320px 140px 160px 160px 160px",
+            gap: 8,
+            marginTop: 8,
+            alignItems: "center",
+          }}
+        >
           <div>
             <div style={{ marginBottom: 6 }}>Empleado</div>
             <EmployeeSelect
@@ -187,7 +196,10 @@ export default function AbsencesPage() {
 
           <div>
             <div style={{ marginBottom: 6 }}>Tipo</div>
-            <select value={fKind} onChange={(e) => setFKind(e.target.value as any)}>
+            <select
+              value={fKind}
+              onChange={(e) => setFKind(e.target.value as any)}
+            >
               <option value="">Todos</option>
               <option value="full_day">full_day</option>
               <option value="hours">hours</option>
@@ -196,7 +208,10 @@ export default function AbsencesPage() {
 
           <div>
             <div style={{ marginBottom: 6 }}>Estado</div>
-            <select value={fStatus} onChange={(e) => setFStatus(e.target.value as any)}>
+            <select
+              value={fStatus}
+              onChange={(e) => setFStatus(e.target.value as any)}
+            >
               <option value="">Todos</option>
               <option value="pending">pending</option>
               <option value="approved">approved</option>
@@ -206,17 +221,49 @@ export default function AbsencesPage() {
 
           <div>
             <div style={{ marginBottom: 6 }}>Desde</div>
-            <input type="date" value={fFrom} onChange={(e) => setFFrom(e.target.value)} />
+            <input
+              type="date"
+              value={fFrom}
+              onChange={(e) => setFFrom(e.target.value)}
+            />
           </div>
 
           <div>
             <div style={{ marginBottom: 6 }}>Hasta</div>
-            <input type="date" value={fTo} onChange={(e) => setFTo(e.target.value)} />
+            <input
+              type="date"
+              value={fTo}
+              onChange={(e) => setFTo(e.target.value)}
+            />
           </div>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "end" }}>
-            <button onClick={() => fetchData(1)} disabled={loading}>Buscar</button>
-            <button onClick={resetFilters} disabled={loading}>Limpiar</button>
+          {/* Botones Buscar / Limpiar dentro de la tarjeta, abajo de los filtros */}
+          <div
+            style={{
+              gridColumn: "1 / -1",
+              marginTop: 4,
+              display: "flex",
+              gap: 8,
+              justifyContent: "flex-start",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => fetchData(1)}
+              disabled={loading}
+              className="px-3 py-2 bg-blue-600 text-gray-800 rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {loading ? "Buscando…" : "Buscar"}
+            </button>
+
+            <button
+              type="button"
+              onClick={resetFilters}
+              disabled={loading}
+              className="px-3 py-2 border rounded hover:bg-gray-100 disabled:opacity-50"
+            >
+              Limpiar
+            </button>
           </div>
         </div>
       </section>
@@ -224,24 +271,47 @@ export default function AbsencesPage() {
       {/* Crear */}
       <section style={{ ...box, marginBottom: 12 }}>
         <strong>Crear permiso</strong>
-        <form onSubmit={onCreate} style={{ display: "grid", gridTemplateColumns: "320px 150px 150px 140px 160px auto", gap: 8, marginTop: 8, alignItems: "end" }}>
+        <form
+          onSubmit={onCreate}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "320px 150px 150px 140px 160px",
+            gap: 8,
+            marginTop: 8,
+            alignItems: "end",
+          }}
+        >
           <div>
             <div style={{ marginBottom: 6 }}>Empleado</div>
             <EmployeeSelect
               value={form.employee_id}
-              onChange={(id) => setForm((f) => ({ ...f, employee_id: id }))}
+              onChange={(id) =>
+                setForm((f) => ({ ...f, employee_id: id }))
+              }
               placeholder="Seleccione empleado…"
             />
           </div>
 
           <div>
             <div style={{ marginBottom: 6 }}>Inicio</div>
-            <input type="date" value={form.start_date} onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))} />
+            <input
+              type="date"
+              value={form.start_date}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, start_date: e.target.value }))
+              }
+            />
           </div>
 
           <div>
             <div style={{ marginBottom: 6 }}>Fin</div>
-            <input type="date" value={form.end_date} onChange={(e) => setForm((f) => ({ ...f, end_date: e.target.value }))} />
+            <input
+              type="date"
+              value={form.end_date}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, end_date: e.target.value }))
+              }
+            />
           </div>
 
           <div>
@@ -250,7 +320,11 @@ export default function AbsencesPage() {
               value={form.kind}
               onChange={(e) => {
                 const k = e.target.value as AbsenceKind;
-                setForm((f) => ({ ...f, kind: k, hours: k === "hours" ? (f.hours || "") : "" }));
+                setForm((f) => ({
+                  ...f,
+                  kind: k,
+                  hours: k === "hours" ? f.hours || "" : "",
+                }));
               }}
             >
               <option value="full_day">full_day</option>
@@ -261,32 +335,32 @@ export default function AbsencesPage() {
           <div>
             <div style={{ marginBottom: 6 }}>Horas</div>
             <input
-  type="number"
-  min={0.25}
-  max={12}
-  step={0.25}
-  disabled={form.kind !== "hours"}
-  value={form.kind === "hours" ? (form.hours ?? "") : ""}
-  onChange={(e) => {
-    const v = e.target.value;
-    setForm((f) => ({
-      ...f,
-      hours: v === "" ? "" : Number(v), // Si lo necesita la tabla
-    }));
-  }}
-/>
+              type="number"
+              min={0.25}
+              max={12}
+              step={0.25}
+              disabled={form.kind !== "hours"}
+              value={form.kind === "hours" ? form.hours ?? "" : ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                setForm((f) => ({
+                  ...f,
+                  hours: v === "" ? "" : Number(v),
+                }));
+              }}
+            />
           </div>
 
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="submit" disabled={!formValid}>Crear</button>
-          </div>
+         
 
           <div style={{ gridColumn: "1 / -1" }}>
             <div style={{ marginTop: 6 }}>Motivo</div>
             <input
               type="text"
               value={form.reason ?? ""}
-              onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, reason: e.target.value }))
+              }
               placeholder="Razón breve (opcional)"
               style={{ width: "100%" }}
             />
@@ -296,13 +370,42 @@ export default function AbsencesPage() {
             <div style={{ marginTop: 6 }}>Notas</div>
             <textarea
               value={form.notes ?? ""}
-              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, notes: e.target.value }))
+              }
               rows={2}
               style={{ width: "100%" }}
             />
           </div>
+
+
+               {/* Botón Crear alineado a la izquierda, dentro de la tarjeta */}
+          <div
+            style={{
+              gridColumn: "1 / -1",
+              display: "flex",
+              gap: 8,
+              justifyContent: "flex-start",
+              alignItems: "center",
+              marginTop: 4,
+            }}
+          >
+            <button
+  type="submit"
+  disabled={!formValid}
+  style={{ color: "black" }}
+  className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 font-semibold hover:bg-indigo-700 disabled:opacity-60"
+>
+  Crear
+</button>
+          </div>
+
+
         </form>
       </section>
+
+
+
 
       {/* Listado */}
       <section style={{ ...box }}>

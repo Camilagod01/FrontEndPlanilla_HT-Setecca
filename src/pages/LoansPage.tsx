@@ -13,9 +13,7 @@ import {
   type LoanSchedule,
   type Currency,
 } from "@/api/loans";
-
 import { fmtDate } from "@/lib/fmtDate";
-
 
 type Paginated<T> = {
   data: T[];
@@ -264,24 +262,30 @@ export default function LoansPage() {
     });
   };
 
+  const resetFilters = () => {
+    setEmployeeId("");
+    setStatus("");
+    fetchData(1);
+  };
+
   return (
     <div style={{ padding: 16 }}>
       <h2 style={{ marginBottom: 12 }}>Préstamos</h2>
 
-      <section style={{ marginBottom: 16, display: "grid", gap: 8 }}>
-        <form onSubmit={onSubmit} style={{ display: "grid", gap: 8, maxWidth: 800 }}>
-          <strong>Nuevo préstamo</strong>
+      {/* Nuevo préstamo */}
+      <section style={{ ...box, marginBottom: 12 }}>
+        <strong>Nuevo préstamo</strong>
 
+        <form onSubmit={onSubmit} style={{ display: "grid", gap: 8, marginTop: 8, maxWidth: 800 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
             <label>
-  Empleado
-  <EmployeeSelect
-    value={form.employee_id}
-    onChange={(id) => setForm((f) => ({ ...f, employee_id: id }))}
-    placeholder="Seleccione empleado…"
-  />
-</label>
-
+              Empleado
+              <EmployeeSelect
+                value={form.employee_id}
+                onChange={(id) => setForm((f) => ({ ...f, employee_id: id }))}
+                placeholder="Seleccione empleado…"
+              />
+            </label>
 
             <label>
               Monto
@@ -453,7 +457,11 @@ export default function LoansPage() {
           </fieldset>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button type="submit" disabled={submitting}>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="inline-flex items-center justify-center rounded-lg bg-indigo-600 text-gray-800 px-4 py-2 font-semibold hover:bg-indigo-700 disabled:opacity-60"
+            >
               {submitting ? "Guardando..." : "Crear préstamo"}
             </button>
             {errorMsg && <span style={{ color: "crimson" }}>{errorMsg}</span>}
@@ -461,28 +469,72 @@ export default function LoansPage() {
         </form>
       </section>
 
-      <section style={{ marginBottom: 8 }}>
+      {/* Filtros */}
+      <section style={{ ...box, marginBottom: 12 }}>
         <strong>Filtros</strong>
-        <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
-          <input
-            type="text"
-            placeholder="Empleado ID"
-            value={employeeId}
-            onChange={(e) => setEmployeeId(e.target.value)}
-            style={{ width: 140 }}
-          />
-          <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: 160 }}>
-            <option value="">Todos</option>
-            <option value="active">active</option>
-            <option value="closed">closed</option>
-          </select>
-          <button onClick={() => fetchData(1)} disabled={loading}>
-            {loading ? "Cargando..." : "Aplicar"}
-          </button>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "160px 160px auto",
+            gap: 8,
+            marginTop: 8,
+            alignItems: "end",
+          }}
+        >
+          <div>
+            <div style={{ marginBottom: 6 }}>Empleado ID</div>
+            <input
+              type="text"
+              placeholder="Ej. 17"
+              value={employeeId}
+              onChange={(e) => setEmployeeId(e.target.value)}
+              style={{ width: "100%" }}
+            />
+          </div>
+
+          <div>
+            <div style={{ marginBottom: 6 }}>Estado</div>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              style={{ width: "100%" }}
+            >
+              <option value="">Todos</option>
+              <option value="active">active</option>
+              <option value="closed">closed</option>
+            </select>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              justifyContent: "flex-start",
+              alignSelf: "end",
+            }}
+          >
+            <button
+              onClick={() => fetchData(1)}
+              disabled={loading}
+              className="px-3 py-2 bg-blue-600 text-gray-800 rounded hover:bg-blue-700 disabled:opacity-50"
+              type="button"
+            >
+              {loading ? "Cargando..." : "Buscar"}
+            </button>
+            <button
+              onClick={resetFilters}
+              disabled={loading}
+              className="px-3 py-2 border rounded hover:bg-gray-100 disabled:opacity-50"
+              type="button"
+            >
+              Limpiar
+            </button>
+          </div>
         </div>
       </section>
 
-      <section>
+      {/* Listado */}
+      <section style={{ ...box }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
           <strong>Listado</strong>
           <small>{totalText}</small>
@@ -564,7 +616,7 @@ export default function LoansPage() {
       </section>
 
       {paymentsLoanId && (
-        <section style={{ marginTop: 16 }}>
+        <section style={{ ...box, marginTop: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <strong>Cuotas del préstamo #{paymentsLoanId}</strong>
             <button onClick={() => setPaymentsLoanId(null)}>Cerrar</button>
@@ -602,7 +654,6 @@ export default function LoansPage() {
                   <tr key={p.id}>
                     <td style={td}>{p.id}</td>
                     <td style={td}>{fmtDate(p.due_date as any)}</td>
-
                     <td style={td}>{Number(p.amount).toFixed(2)}</td>
                     <td style={td}>{p.status}</td>
                     <td style={td}>{p.source}</td>
@@ -628,6 +679,14 @@ export default function LoansPage() {
     </div>
   );
 }
+
+const box: React.CSSProperties = {
+  background: "#ffffff",
+  borderRadius: 8,
+  padding: 12,
+  border: "1px solid #e5e7eb",
+  boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+};
 
 const th: React.CSSProperties = {
   textAlign: "left",

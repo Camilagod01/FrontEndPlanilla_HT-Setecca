@@ -30,11 +30,26 @@ export default function EmployeeCreatePage() {
     hire_date: "",
     status: "active",
     position_id: undefined as number | undefined,
+    work_shift: "diurna",
   });
 
     // Lista de puestos
   const [positions, setPositions] = useState<Position[]>([]);
   const [loadingPositions, setLoadingPositions] = useState(true);
+
+
+  // justo después de los useState, antes del return
+const handleChange = (e: any) => {
+  const { name, value } = e.target;
+  setForm((prev: any) => ({
+    ...prev,
+    [name]: value,
+  }));
+};
+
+
+
+
 
   const setField = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -91,6 +106,8 @@ export default function EmployeeCreatePage() {
         hire_date: form.hire_date || undefined,
         status: form.status || "active",
         position_id: form.position_id, 
+        work_shift: form.work_shift,
+
       };
       const res = await api.post("/employees", payload);
       const emp = res.data;
@@ -226,6 +243,36 @@ export default function EmployeeCreatePage() {
           </div>
         </div>
 
+
+
+
+            <div className="flex flex-col">
+  <label className="text-sm font-medium text-gray-700">
+    Jornada
+  </label>
+  <select
+    name="work_shift"
+    value={form.work_shift}
+    onChange={(e) =>
+  setForm((prev) => ({
+    ...prev,
+    work_shift: e.target.value,
+  }))
+}
+
+    className="mt-1 rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring focus:ring-indigo-200"
+  >
+    <option value="diurna">Diurna</option>
+    <option value="nocturna">Nocturna</option>
+    <option value="mixta">Mixta</option>
+  </select>
+  <p className="text-xs text-gray-500 mt-1">
+    Se usa para calcular las horas estándar mensuales (diurna/nocturna).
+  </p>
+</div>
+
+
+
         <div className="grid md:grid-cols-3 gap-3">
           <div className="grid">
             <label className="mb-1" htmlFor="hire_date">Fecha de contratación</label>
@@ -294,7 +341,7 @@ export default function EmployeeCreatePage() {
         {openImport && <ImportEmployeesModal onClose={() => setOpenImport(false)} />}
 
         <div className="flex gap-2">
-          <button type="submit" disabled={saving} className="bg-blue-600 text-white px-4 py-2 rounded">
+          <button type="submit" disabled={saving} className="inline-flex items-center justify-center rounded-lg bg-indigo-600 text-gray-800 px-4 py-2 font-semibold hover:bg-indigo-700 disabled:opacity-60">
             {saving ? "Guardando…" : "Crear empleado"}
           </button>
           <button

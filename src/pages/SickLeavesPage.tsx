@@ -205,17 +205,60 @@ export default function SickLeavesPage() {
             <input type="date" value={fTo} onChange={(e) => setFTo(e.target.value)} />
           </div>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "end" }}>
-            <button onClick={() => fetchData(1)} disabled={loading}>Buscar</button>
-            <button onClick={resetFilters} disabled={loading}>Limpiar</button>
+        
+  
+
+
+              <div
+            style={{
+              gridColumn: "1 / -1",     // ocupa toda la fila del grid
+              marginTop: 8,
+              display: "flex",
+              justifyContent: "flex-start",
+              gap: 8,
+            }}
+          >
+            <button
+              onClick={() => fetchData(1)}
+              disabled={loading}
+              className="px-3 py-2 bg-blue-600 text-gray-800 rounded hover:bg-blue-700 disabled:opacity-50"
+              type="button"
+            >
+              {loading ? "Buscando…" : "Buscar"}
+            </button>
+
+            <button
+              onClick={resetFilters}
+              disabled={loading}
+              className="px-3 py-2 border rounded hover:bg-gray-100 disabled:opacity-50"
+              type="button"
+            >
+              Limpiar
+            </button>
           </div>
+
+
+
+
+
+
         </div>
       </section>
 
-      {/* Crear */}
+           {/* Crear */}
       <section style={{ ...box, marginBottom: 12 }}>
         <strong>Crear incapacidad</strong>
-        <form onSubmit={onCreate} style={{ display: "grid", gridTemplateColumns: "320px 140px 140px 160px 160px 160px", gap: 8, marginTop: 8, alignItems: "end" }}>
+
+        <form
+          onSubmit={onCreate}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr auto",
+            gap: 12,
+            marginTop: 8,
+            alignItems: "end",
+          }}
+        >
           <div>
             <div style={{ marginBottom: 6 }}>Empleado</div>
             <EmployeeSelect
@@ -227,17 +270,37 @@ export default function SickLeavesPage() {
 
           <div>
             <div style={{ marginBottom: 6 }}>Inicio</div>
-            <input type="date" value={form.start_date} onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))} />
+            <input
+              type="date"
+              value={form.start_date}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, start_date: e.target.value }))
+              }
+            />
           </div>
 
           <div>
             <div style={{ marginBottom: 6 }}>Fin</div>
-            <input type="date" value={form.end_date} onChange={(e) => setForm((f) => ({ ...f, end_date: e.target.value }))} />
+            <input
+              type="date"
+              value={form.end_date}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, end_date: e.target.value }))
+              }
+            />
           </div>
 
           <div>
             <div style={{ marginBottom: 6 }}>Proveedor</div>
-            <select value={form.provider} onChange={(e) => setForm((f) => ({ ...f, provider: e.target.value as SickProvider }))}>
+            <select
+              value={form.provider}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  provider: e.target.value as SickProvider,
+                }))
+              }
+            >
               <option value="CCSS">CCSS</option>
               <option value="INS">INS</option>
               <option value="OTHER">OTHER</option>
@@ -252,25 +315,62 @@ export default function SickLeavesPage() {
               max={100}
               step={1}
               value={form.coverage_percent}
-              onChange={(e) => setForm((f) => ({ ...f, coverage_percent: Number(e.target.value) }))}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  coverage_percent: Number(e.target.value),
+                }))
+              }
             />
           </div>
 
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="submit" disabled={!formValid}>Crear</button>
-          </div>
 
-          <div style={{ gridColumn: "1 / -1" }}>
-            <div style={{ marginTop: 6 }}>Notas</div>
+              {/* Notas a ancho completo, dentro del cuadro */}
+          <div style={{ gridColumn: "1 / -1", marginTop: 6 }}>
+            <div style={{ marginBottom: 4 }}>Notas</div>
             <textarea
               value={form.notes}
-              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, notes: e.target.value }))
+              }
               rows={2}
               style={{ width: "100%" }}
             />
           </div>
+
+
+
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              justifyContent: "flex-start",
+              alignSelf: "end",
+            }}
+          >
+            
+            <button
+  type="submit"
+  disabled={!formValid}
+  style={{
+    background: "#e5e7eb",   // gris claro (opcional)
+    color: "#000",          // TEXTO NEGRO
+    padding: "6px 12px",
+    borderRadius: 6,
+    border: "1px solid #ccc",
+    cursor: formValid ? "pointer" : "not-allowed",
+  }}
+>
+  Crear
+</button>
+
+
+          </div>
+
+          
         </form>
       </section>
+
 
       {/* Listado */}
       <section style={{ ...box }}>

@@ -10,8 +10,6 @@ import {
 } from "@/api/advances";
 import { fmtDate } from "@/lib/fmtDate";
 
-
-
 type Paginated<T> = {
   data: T[];
   meta?: {
@@ -36,10 +34,12 @@ export default function AdvancesPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Filtros
   const [employeeId, setEmployeeId] = useState<string>("");
   const [status, setStatus] = useState<string>("");
   const [page, setPage] = useState<number>(1);
 
+  // Form crear
   const [form, setForm] = useState<Partial<Advance>>(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [meta, setMeta] = useState<Paginated<Advance>["meta"]>();
@@ -147,65 +147,94 @@ export default function AdvancesPage() {
     }
   };
 
+  function resetFilters() {
+    setEmployeeId("");
+    setStatus("");
+  }
+
   return (
     <div style={{ padding: 16 }}>
       <h2 style={{ marginBottom: 12 }}>Adelantos</h2>
 
-      <section style={{ marginBottom: 16, display: "grid", gap: 8 }}>
-        <form onSubmit={onSubmit} style={{ display: "grid", gap: 8, maxWidth: 600 }}>
-          <strong>Nuevo adelanto</strong>
+      {/* NUEVO ADELANTO - en tarjeta */}
+      <section style={{ ...box, marginBottom: 16 }}>
+        <strong>Nuevo adelanto</strong>
+        <form
+          onSubmit={onSubmit}
+          style={{
+            display: "grid",
+            gap: 8,
+            marginTop: 8,
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 8,
+            }}
+          >
+            <label style={{ display: "block" }}>
+              Empleado
+              <EmployeeSelect
+                value={form.employee_id}
+                onChange={(id) => setForm((f) => ({ ...f, employee_id: id }))}
+                placeholder="Seleccione empleado…"
+              />
+            </label>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <label>
-        Empleado
-        <EmployeeSelect
-         value={form.employee_id}
-        onChange={(id) => setForm((f) => ({ ...f, employee_id: id }))}
-        placeholder="Seleccione empleado…"
-        />
-        </label>
-
-
-
-
-            <label>
+            <label style={{ display: "block" }}>
               Monto
               <input
                 type="number"
                 step="0.01"
                 value={form.amount ?? ""}
-                onChange={(e) => setForm((f) => ({ ...f, amount: Number(e.target.value) }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, amount: Number(e.target.value) }))
+                }
                 placeholder="Ej. 120000"
               />
             </label>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-            <label>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr",
+              gap: 8,
+            }}
+          >
+            <label style={{ display: "block" }}>
               Moneda
               <select
                 value={form.currency}
-                onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value as any }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, currency: e.target.value as any }))
+                }
               >
                 <option value="CRC">CRC</option>
                 <option value="USD">USD</option>
               </select>
             </label>
 
-            <label>
+            <label style={{ display: "block" }}>
               Fecha otorgado
               <input
                 type="date"
                 value={form.granted_at ?? ""}
-                onChange={(e) => setForm((f) => ({ ...f, granted_at: e.target.value }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, granted_at: e.target.value }))
+                }
               />
             </label>
 
-            <label>
+            <label style={{ display: "block" }}>
               Estado
               <select
                 value={form.status ?? "pending"}
-                onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as any }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, status: e.target.value as any }))
+                }
               >
                 <option value="pending">pending</option>
                 <option value="applied">applied</option>
@@ -214,18 +243,33 @@ export default function AdvancesPage() {
             </label>
           </div>
 
-          <label>
+          <label style={{ display: "block" }}>
             Notas
             <input
               type="text"
               value={form.notes ?? ""}
-              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, notes: e.target.value }))
+              }
               placeholder="Detalle opcional"
+              style={{ width: "100%" }}
             />
           </label>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button type="submit" disabled={submitting}>
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              justifyContent: "flex-start",
+              marginTop: 4,
+            }}
+          >
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-3 py-2 bg-indigo-600 text-gray-800 rounded hover:bg-indigo-700 disabled:opacity-60"
+            >
               {submitting ? "Guardando..." : "Crear adelanto"}
             </button>
             {errorMsg && <span style={{ color: "crimson" }}>{errorMsg}</span>}
@@ -233,30 +277,85 @@ export default function AdvancesPage() {
         </form>
       </section>
 
-      <section style={{ marginBottom: 8 }}>
+      {/* FILTROS - en tarjeta y botones dentro */}
+      <section style={{ ...box, marginBottom: 12 }}>
         <strong>Filtros</strong>
-        <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
-          <input
-            type="text"
-            placeholder="Empleado ID"
-            value={employeeId}
-            onChange={(e) => setEmployeeId(e.target.value)}
-            style={{ width: 140 }}
-          />
-          <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: 160 }}>
-            <option value="">Todos</option>
-            <option value="pending">pending</option>
-            <option value="applied">applied</option>
-            <option value="cancelled">cancelled</option>
-          </select>
-          <button onClick={() => fetchData(1)} disabled={loading}>
-            {loading ? "Cargando..." : "Aplicar"}
-          </button>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "200px 180px",
+            gap: 8,
+            marginTop: 8,
+            alignItems: "end",
+          }}
+        >
+          <div>
+            <div style={{ marginBottom: 6 }}>Empleado ID</div>
+            <input
+              type="text"
+              placeholder="Ej. 17"
+              value={employeeId}
+              onChange={(e) => setEmployeeId(e.target.value)}
+              style={{ width: "100%" }}
+            />
+          </div>
+
+          <div>
+            <div style={{ marginBottom: 6 }}>Estado</div>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              style={{ width: "100%" }}
+            >
+              <option value="">Todos</option>
+              <option value="pending">pending</option>
+              <option value="applied">applied</option>
+              <option value="cancelled">cancelled</option>
+            </select>
+          </div>
+
+          <div
+            style={{
+              gridColumn: "1 / -1",
+              display: "flex",
+              gap: 8,
+              justifyContent: "flex-start",
+              marginTop: 4,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => fetchData(1)}
+              disabled={loading}
+              className="px-3 py-2 bg-blue-600 text-gray-800 rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {loading ? "Buscando..." : "Buscar"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                resetFilters();
+                fetchData(1);
+              }}
+              disabled={loading}
+              className="px-3 py-2 border rounded hover:bg-gray-100 disabled:opacity-50"
+            >
+              Limpiar
+            </button>
+          </div>
         </div>
       </section>
 
+      {/* LISTADO */}
       <section>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginBottom: 6,
+          }}
+        >
           <strong>Listado</strong>
           <small>{totalText}</small>
         </div>
@@ -310,13 +409,21 @@ export default function AdvancesPage() {
                   <td style={td}>{a.notes ?? ""}</td>
                   <td style={td}>
                     <div style={{ display: "flex", gap: 6 }}>
-                      <button onClick={() => markApplied(a.id)} disabled={a.status !== "pending"}>
+                      <button
+                        onClick={() => markApplied(a.id)}
+                        disabled={a.status !== "pending"}
+                      >
                         Aplicar
                       </button>
-                      <button onClick={() => cancelAdvance(a.id)} disabled={a.status === "applied"}>
+                      <button
+                        onClick={() => cancelAdvance(a.id)}
+                        disabled={a.status === "applied"}
+                      >
                         Cancelar
                       </button>
-                      <button onClick={() => removeAdvance(a.id)}>Eliminar</button>
+                      <button onClick={() => removeAdvance(a.id)}>
+                        Eliminar
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -326,8 +433,18 @@ export default function AdvancesPage() {
         </div>
 
         {meta && meta.last_page > 1 && (
-          <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
-            <button onClick={() => fetchData(Math.max(1, page - 1))} disabled={page <= 1}>
+          <div
+            style={{
+              marginTop: 8,
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+            }}
+          >
+            <button
+              onClick={() => fetchData(Math.max(1, page - 1))}
+              disabled={page <= 1}
+            >
               ◀
             </button>
             <span>
@@ -345,6 +462,13 @@ export default function AdvancesPage() {
     </div>
   );
 }
+
+const box: React.CSSProperties = {
+  background: "#fff",
+  borderRadius: 8,
+  padding: 12,
+  boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+};
 
 const th: React.CSSProperties = {
   textAlign: "left",

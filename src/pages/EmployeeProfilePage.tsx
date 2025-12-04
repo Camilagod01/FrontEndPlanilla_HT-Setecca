@@ -11,15 +11,7 @@ import EmployeeVacationsTab from "../components/EmployeeVacationsTab";
 import { getEmployeeAguinaldoByCode, AguinaldoItem } from "@/api/aguinaldo";
 import { getLoanPayments, updateLoanPayment, type LoanPayment } from "@/api/loans";
 
-// DD/MM/YYYY (para algunos casos puntuales)
-const fmtDate = (d?: string | null) => {
-  if (!d) return "-";
-  const x = new Date(d);
-  if (isNaN(x.getTime())) return String(d).slice(0, 10);
-  return x.toLocaleDateString("es-CR");
-};
-
-// ===== Tipos mínimos (flexibles para no romper) =====
+// ===== Tipos mínimos =====
 type Maybe<T> = T | null | undefined;
 
 interface Employee {
@@ -31,7 +23,7 @@ interface Employee {
   position_id?: number | null;
   position?: Position | null;
   department?: string;
-  work_shift?: string;
+  work_shift?: "diurna" | "nocturna" | "mixta" | null;
   hire_date?: string; // YYYY-MM-DD
   status?: string; // active|inactive
 }
@@ -45,14 +37,72 @@ interface TimeEntry {
   source?: string | null;
 }
 
-/** ==== Helper: calcula tarifa por hora a partir del puesto ==== */
+// ==== Parámetros de planilla para calcular horas del mes ====
+type PayrollSettings = {
+  workday_hours_diurnal: number | string | null;
+  workday_hours_nocturnal: number | string | null;
+};
+
+/**
+ * Calcula cuántas horas "normales" se esperan en un mes:
+ * - Usa los parámetros de planilla (diurnas/nocturnas)
+ * - Usa la jornada del empleado (diurna / nocturna / mixta)
+ * - Cuenta solo Lunes–Sábado (Domingo se deja fuera porque es doble si se trabaja)
+ */
+function computeStandardMonthHours(
+  settings: PayrollSettings | null,
+  workShift: "diurna" | "nocturna" | "mixta" | null | undefined,
+  referenceDate?: string
+): number {
+  if (!settings) {
+    return 173.33; // fallback clásico
+  }
+
+  const ref = referenceDate ? dayjs(referenceDate) : dayjs(); // mes actual por defecto
+  const daysInMonth = ref.daysInMonth();
+
+  const diurnal =
+    settings.workday_hours_diurnal != null
+      ? Number(settings.workday_hours_diurnal)
+      : 8;
+  const nocturnal =
+    settings.workday_hours_nocturnal != null
+      ? Number(settings.workday_hours_nocturnal)
+      : 6;
+
+  const isNight = workShift === "nocturna";
+  const dailyHours = isNight ? nocturnal : diurnal;
+
+  let total = 0;
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const d = ref.date(day);
+    const dow = d.day(); // 0 = Domingo, 1 = Lunes, ... 6 = Sábado
+    if (dow === 0) continue; // saltamos domingos
+    total += dailyHours;
+  }
+
+  return total > 0 ? total : 173.33;
+}
+
+/** ==== Helper: calcula tarifa por hora a partir del puesto + planilla ==== */
 function getHourlyFromPosition(
-  p?: Position | null
+  p?: Position | null,
+  opts?: {
+    payrollSettings?: PayrollSettings | null;
+    workShift?: "diurna" | "nocturna" | "mixta" | null;
+    referenceDate?: string; // opcional
+  }
 ): { rate: number; currency: string; monthly?: number } {
   const currency = p?.default_salary_currency ?? p?.currency ?? "CRC";
   if (!p) return { rate: 0, currency };
 
-  const HOURS_PER_MONTH = 173.33;
+  const standardMonthHours = computeStandardMonthHours(
+    opts?.payrollSettings ?? null,
+    opts?.workShift ?? null,
+    opts?.referenceDate
+  );
+  const HOURS_PER_MONTH = standardMonthHours > 0 ? standardMonthHours : 173.33;
 
   // 1) Caso salario por hora
   if (p.salary_type === "hourly") {
@@ -84,7 +134,7 @@ function getHourlyFromPosition(
   return { rate: 0, currency };
 }
 
-// ===== Helper formato fecha estándar dd/mm/yyyy =====
+/** ===== Helper formato fecha estándar dd/mm/yyyy ===== */
 function formatDate(raw?: string | null) {
   if (!raw) return "";
   const d = new Date(raw);
@@ -98,10 +148,55 @@ function formatDate(raw?: string | null) {
   });
 }
 
+// DD/MM/YYYY para otros casos
+const fmtDate = (d?: string | null) => {
+  if (!d) return "-";
+  const x = new Date(d);
+  if (isNaN(x.getTime())) return String(d).slice(0, 10);
+  return x.toLocaleDateString("es-CR");
+};
+
 // ===== Página principal =====
 export default function EmployeeProfilePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+
+  // === Parámetros de planilla (diurnas/nocturnas) ===
+  const [payrollSettings, setPayrollSettings] = useState<PayrollSettings | null>(
+    null
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/payroll-settings", {
+          headers: { Accept: "application/json" },
+          credentials: "include",
+        });
+
+        if (!res.ok) {
+          console.error("Error cargando payroll-settings", res.status);
+          return;
+        }
+
+        const data = await res.json();
+        if (!isMounted) return;
+
+        setPayrollSettings({
+          workday_hours_diurnal: data.workday_hours_diurnal ?? null,
+          workday_hours_nocturnal: data.workday_hours_nocturnal ?? null,
+        });
+      } catch (err) {
+        console.error("Fallo al obtener payroll-settings", err);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const [emp, setEmp] = useState<Maybe<Employee>>(null);
   const [loadingEmp, setLoadingEmp] = useState<boolean>(true);
@@ -120,6 +215,7 @@ export default function EmployeeProfilePage() {
   const [loadingAguinaldo, setLoadingAguinaldo] = useState(false);
   const [errorAguinaldo, setErrorAguinaldo] = useState<string | null>(null);
 
+  // Carga de empleado
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -141,6 +237,19 @@ export default function EmployeeProfilePage() {
     };
   }, [id]);
 
+  // === Cálculo de salario base (hora y mensual) según puesto + planilla + calendario ===
+  const hourlyInfo = emp
+    ? getHourlyFromPosition(emp.position, {
+        payrollSettings,
+        workShift: emp.work_shift ?? null,
+        // referenceDate: emp.hire_date ?? undefined, // opcional
+      })
+    : { rate: 0, currency: "CRC", monthly: undefined };
+
+  const salaryRate = hourlyInfo.rate;
+  const salaryCurrency = hourlyInfo.currency;
+  const monthly = hourlyInfo.monthly ?? 0;
+
   // Cargar aguinaldo del empleado
   useEffect(() => {
     if (!emp || !emp.code) return;
@@ -152,7 +261,7 @@ export default function EmployeeProfilePage() {
         setLoadingAguinaldo(true);
         setErrorAguinaldo(null);
 
-        const data = await getEmployeeAguinaldoByCode(emp.code, asOf);
+        const data = await getEmployeeAguinaldoByCode(emp.code ?? "", asOf);
         setAguinaldo(data);
       } catch (err) {
         console.error(err);
@@ -184,16 +293,14 @@ export default function EmployeeProfilePage() {
       </div>
     );
 
-  const { rate: hourlyRate, currency: hourlyCurrency } = getHourlyFromPosition(
-    emp.position
-  );
-
   const statusLabel =
     emp.status === "inactive" ? "Inactivo" : emp.status ? "Activo" : "Activo";
   const statusColor =
     emp.status === "inactive"
       ? "bg-rose-50 text-rose-700 border border-rose-200"
       : "bg-emerald-50 text-emerald-700 border border-emerald-200";
+
+  const workShift = emp.work_shift ?? "diurna";
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -227,7 +334,9 @@ export default function EmployeeProfilePage() {
             </div>
 
             <div className="flex flex-col items-start md:items-end gap-2 text-xs text-slate-500">
-              <div className={`inline-flex items-center px-2 py-1 rounded-full ${statusColor}`}>
+              <div
+                className={`inline-flex items-center px-2 py-1 rounded-full ${statusColor}`}
+              >
                 <span className="w-1.5 h-1.5 rounded-full bg-current/60 mr-1.5" />
                 <span className="font-medium text-[11px] uppercase tracking-wide">
                   {statusLabel}
@@ -288,15 +397,18 @@ export default function EmployeeProfilePage() {
         </div>
 
         {/* Contenido de pestañas */}
-        {tab === "general" && <GeneralSection emp={emp} onUpdated={setEmp} />}
-
-        {tab === "hours" && (
-          <HoursSection
-            empId={Number(id)}
-            hourlyRate={hourlyRate}
-            currency={hourlyCurrency}
+        {tab === "general" && (
+          <GeneralSection
+            emp={emp}
+            onUpdated={setEmp}
+            payrollSettings={payrollSettings}
           />
         )}
+
+        {tab === "hours" && (
+  <HoursSection emp={emp} payrollSettings={payrollSettings} />
+)}
+
 
         {tab === "sick" && (
           <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 md:p-5">
@@ -395,17 +507,19 @@ export default function EmployeeProfilePage() {
 function GeneralSection({
   emp,
   onUpdated,
+  payrollSettings,
 }: {
   emp: Employee;
   onUpdated: (e: Employee) => void;
+  payrollSettings: PayrollSettings | null;
 }) {
   const [form, setForm] = useState({
     first_name: emp.first_name ?? "",
     last_name: emp.last_name ?? "",
     code: emp.code ?? "",
     email: emp.email ?? "",
-    work_shift: (emp as any).work_shift ?? "",
-    hire_date: (emp as any).hire_date ?? "",
+    work_shift: emp.work_shift ?? "",
+    hire_date: emp.hire_date ?? "",
     status: emp.status === "inactive" ? "inactive" : "active",
   });
 
@@ -423,8 +537,8 @@ function GeneralSection({
       last_name: emp.last_name ?? "",
       code: emp.code ?? "",
       email: emp.email ?? "",
-      work_shift: (emp as any).work_shift ?? "",
-      hire_date: (emp as any).hire_date ?? "",
+      work_shift: emp.work_shift ?? "",
+      hire_date: emp.hire_date ?? "",
       status: emp.status === "inactive" ? "inactive" : "active",
     });
     setSelectedPos(emp.position_id ?? "");
@@ -522,7 +636,11 @@ function GeneralSection({
   }
 
   const { rate: salaryRate, currency: salaryCurrency, monthly } =
-    getHourlyFromPosition(positionForSalary);
+    getHourlyFromPosition(positionForSalary, {
+      payrollSettings,
+      workShift: (emp.work_shift ?? null) as any,
+      referenceDate: emp.hire_date ?? undefined,
+    });
 
   return (
     <div className="grid gap-4 max-w-4xl">
@@ -629,7 +747,6 @@ function GeneralSection({
             ) : (
               <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900">
                 {(() => {
-                  const anyEmp: any = emp;
                   if (emp.position?.name) {
                     return `${emp.position.name}${
                       emp.position.code ? ` (${emp.position.code})` : ""
@@ -641,7 +758,6 @@ function GeneralSection({
                       return `${p.name}${p.code ? ` (${p.code})` : ""}`;
                     }
                   }
-                  if (anyEmp.position_name) return anyEmp.position_name;
                   return "—";
                 })()}
               </div>
@@ -661,9 +777,7 @@ function GeneralSection({
               />
             ) : (
               <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900">
-                {(emp as any).hire_date
-                  ? formatDate((emp as any).hire_date)
-                  : "—"}
+                {emp.hire_date ? formatDate(emp.hire_date) : "—"}
               </div>
             )}
           </label>
@@ -722,7 +836,7 @@ function GeneralSection({
               </select>
             ) : (
               <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900">
-                {(emp as any).work_shift || "—"}
+                {emp.work_shift || "—"}
               </div>
             )}
           </label>
@@ -734,7 +848,10 @@ function GeneralSection({
               {salaryRate > 0
                 ? `${
                     salaryCurrency === "USD" ? "$" : "₡"
-                  }${salaryRate.toLocaleString()} ${salaryCurrency}`
+                  }${salaryRate.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })} ${salaryCurrency}`
                 : "—"}
             </div>
           </label>
@@ -746,7 +863,10 @@ function GeneralSection({
               {typeof monthly === "number" && monthly > 0
                 ? `${
                     salaryCurrency === "USD" ? "$" : "₡"
-                  }${monthly.toLocaleString()} ${salaryCurrency} (estimado)`
+                  }${monthly.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })} ${salaryCurrency} (estimado)`
                 : "—"}
             </div>
           </label>
@@ -775,93 +895,111 @@ function GeneralSection({
   );
 }
 
-/* ===== (b) Horas ===== */
-
 function HoursSection({
-  empId,
-  hourlyRate,
-  currency = "CRC",
+  emp,
+  payrollSettings,
 }: {
-  empId: number;
-  hourlyRate: number;
-  currency?: string;
+  emp: Employee;
+  payrollSettings: PayrollSettings | null;
 }) {
-  const [from, setFrom] = useState(dayjs().startOf("month").format("YYYY-MM-DD"));
+  const empId = emp.id;
+
+  // Rango de fechas por defecto (mes actual)
+  const [from, setFrom] = useState(
+    dayjs().startOf("month").format("YYYY-MM-DD")
+  );
   const [to, setTo] = useState(dayjs().endOf("month").format("YYYY-MM-DD"));
 
+  // Cargar horas desde el backend
   const { data, loading, error } = useEmployeeHours(empId, from, to);
 
+  // === Cargar puestos para poder calcular tarifa real ===
+  const [positions, setPositions] = useState<Position[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.get("/positions", { params: { per_page: 200 } });
+        const raw = res.data as any;
+        const list: Position[] = Array.isArray(raw)
+          ? raw
+          : Array.isArray(raw?.data)
+          ? raw.data
+          : [];
+        setPositions(list);
+      } catch (e) {
+        console.error("Error cargando positions en HoursSection", e);
+      }
+    })();
+  }, [empId]);
+
+  // Buscar el puesto con datos completos de salario
+  let positionForSalary: Position | null = (emp.position as any) ?? null;
+
+  if (
+    (!positionForSalary ||
+      (positionForSalary.default_salary_amount == null &&
+        positionForSalary.base_hourly_rate == null)) &&
+    emp.position_id
+  ) {
+    const found = positions.find((p) => p.id === emp.position_id);
+    if (found) {
+      positionForSalary = found;
+    }
+  }
+
+  // Jornada
+  const workShift =
+    (emp as any).work_shift ?? emp.work_shift ?? ("diurna" as any);
+
+  // Calcular tarifa/hora y moneda usando helper global + parámetros de planilla
+  const { rate: rawRate, currency } = getHourlyFromPosition(
+    positionForSalary ?? undefined,
+    {
+      payrollSettings,
+      workShift,
+    }
+  );
+
+  const rate = Number(rawRate) || 0;
+
+  // 🔍 Debug para ver qué está usando exactamente
+  console.log("HoursSection salary debug →", {
+    empId,
+    positionForSalary,
+    workShift,
+    payrollSettings,
+    rate,
+    currency,
+  });
+
+  // === Helpers numéricos ===
   const toNum = (v: any, def = 0) => {
     const n = Number(v);
     return Number.isFinite(n) ? n : def;
-  };
-  const pickNum = (...vals: any[]) => {
-    for (const v of vals) {
-      const n = Number(v);
-      if (Number.isFinite(n)) return n;
-    }
-    return 0;
   };
 
   const raw: any = data ?? {};
   const d: any = raw?.data ?? raw?.result ?? raw;
 
-  const daysArr: any[] =
-    Array.isArray(d?.days) ? d.days : Array.isArray(d?.data?.days) ? d.data.days : [];
-
-  const sumDays = daysArr.reduce((acc, it) => acc + toNum(it?.hours ?? it?.h, 0), 0);
-
-  const total = toNum(d?.total_hours ?? d?.totalHours ?? d?.total, sumDays);
-
-  const ot: any = d?.overtime ?? d?.ot ?? {};
-  const dailyThreshold = toNum(
-    ot?.daily_threshold ?? d?.rules?.daily_base ?? d?.rules?.dailyLimit,
-    8
+  // Buckets enviados por el backend (HoursCalculatorService)
+  const h1 = toNum(
+    d?.hours_1x ?? d?.hours1x ?? d?.regular_1x ?? d?.regular_hours,
+    0
+  );
+  const h15 = toNum(
+    d?.hours_1_5x ?? d?.hours15x ?? d?.overtime_15x ?? d?.overtime_day,
+    0
+  );
+  const h2 = toNum(
+    d?.hours_2x ?? d?.hours2x ?? d?.double_20x ?? d?.overtime_week,
+    0
   );
 
-  let dailyOH = pickNum(
-    ot?.daily_hours,
-    ot?.dailyHours,
-    ot?.daily,
-    ot?.day,
-    ot?.day_hours,
-    ot?.dayHours,
-    ot?.daily?.hours,
-    ot?.day?.hours,
-    d?.extra_day,
-    d?.extraDay
-  );
-  if (!dailyOH && daysArr.length) {
-    dailyOH = daysArr.reduce((acc, it) => {
-      const h = toNum(it?.hours ?? it?.h, 0);
-      return acc + Math.max(0, h - dailyThreshold);
-    }, 0);
-  }
-
-  const weeklyOH = pickNum(
-    ot?.weekly_hours,
-    ot?.weeklyHours,
-    ot?.weekly,
-    ot?.week,
-    ot?.week_hours,
-    ot?.weekHours,
-    ot?.weekly?.hours,
-    ot?.week?.hours,
-    d?.extra_week,
-    d?.extraWeek
-  );
-
-  const mult: any = ot?.multipliers ?? ot?.mult ?? {};
-  const mDaily = toNum(mult?.daily ?? mult?.dailyMultiplier, 1.5);
-  const mWeekly = toNum(mult?.weekly ?? mult?.weeklyMultiplier, 2);
-
-  const regularHours = Math.max(0, total - dailyOH - weeklyOH);
-
-  const rate = toNum(hourlyRate, 0);
-  const payRegular = regularHours * rate;
-  const payDailyOT = dailyOH * rate * mDaily;
-  const payWeeklyOT = weeklyOH * rate * mWeekly;
-  const payTotal = payRegular + payDailyOT + payWeeklyOT;
+  const payRegular = h1 * rate;
+  const payDailyOT = h15 * rate * 1.5;
+  const payDouble = h2 * rate * 2;
+  const payTotal = payRegular + payDailyOT + payDouble;
 
   const money = (n: number) =>
     `${currency === "USD" ? "$" : "₡"}${n.toLocaleString(undefined, {
@@ -870,43 +1008,62 @@ function HoursSection({
     })} ${currency}`;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 md:p-5">
-      <div className="flex flex-wrap gap-3 items-end mb-4">
-        <label className="grid text-sm">
-          <span className="text-slate-600 mb-1">Desde</span>
+    <div className="grid gap-3">
+      {/* Filtros de fecha */}
+      <div className="flex gap-2 items-end">
+        <label className="grid">
+          <span>Desde</span>
           <input
             type="date"
-            className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-slate-500 focus:ring-1 focus:ring-slate-500/40 outline-none"
+            className="border p-2 rounded"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
           />
         </label>
-        <label className="grid text-sm">
-          <span className="text-slate-600 mb-1">Hasta</span>
+        <label className="grid">
+          <span>Hasta</span>
           <input
             type="date"
-            className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-slate-500 focus:ring-1 focus:ring-slate-500/40 outline-none"
+            className="border p-2 rounded"
             value={to}
             onChange={(e) => setTo(e.target.value)}
           />
         </label>
+      </div>
 
-        <div className="ml-auto text-xs text-slate-500">
-          Total:{" "}
-          <span className="font-semibold text-slate-900">
-            {total.toFixed(2)} h
-          </span>{" "}
-          · Estimado:{" "}
-          <span className="font-semibold text-slate-900">
-            {money(payTotal)}
+      {/* Tarifa + resumen salarial usando 1× / 1.5× / 2× */}
+      <div className="p-3 rounded-xl bg-gray-50 border flex flex-col gap-1 text-sm">
+        <div>
+          <span className="text-gray-500 mr-1">Tarifa base:</span>
+          <span className="font-semibold">
+            {rate > 0
+              ? money(rate).replace(/(\sCRC|\sUSD)$/, "") + ` /h`
+              : "—"}
+          </span>
+        </div>
+        <div>
+          <span className="text-gray-500 mr-1">
+            Estimado total (1× + 1.5× + 2×):
+          </span>
+          <span className="font-semibold">
+            {rate > 0 ? money(payTotal) : "—"}
           </span>
         </div>
       </div>
 
-      <EmployeeHoursCard result={data} loading={loading} error={error} />
+      {/* Card principal de horas (desglose diario y semanal) */}
+      <EmployeeHoursCard
+        result={data as any}
+        loading={loading}
+        error={error as any}
+        hourlyRate={rate}
+        currency={currency}
+      />
     </div>
   );
 }
+
+
 
 /* ===== (c) Marcaciones ===== */
 
@@ -1111,12 +1268,8 @@ function PunchesSection({ empId }: { empId: number }) {
                 <td className="px-3 py-2 text-slate-800">
                   {r.check_out ? formatDate(r.check_out as any) : "-"}
                 </td>
-                <td className="px-3 py-2 text-slate-700">
-                  {r.notes ?? ""}
-                </td>
-                <td className="px-3 py-2 text-slate-700">
-                  {r.source ?? ""}
-                </td>
+                <td className="px-3 py-2 text-slate-700">{r.notes ?? ""}</td>
+                <td className="px-3 py-2 text-slate-700">{r.source ?? ""}</td>
               </tr>
             ))}
             {!rows.length && (
@@ -1433,17 +1586,14 @@ function FinanceSection({ empId }: { empId: number }) {
                       "";
 
                     const original = anyLoan.amount;
-                    const status =
-                      anyLoan.status ?? anyLoan.state ?? "-";
+                    const status = anyLoan.status ?? anyLoan.state ?? "-";
                     const description =
                       anyLoan.notes ?? anyLoan.description ?? "-";
 
                     return (
                       <tr key={anyLoan.id} className="border-t border-slate-100">
                         <td className="px-2 py-1.5">{anyLoan.id}</td>
-                        <td className="px-2 py-1.5">
-                          {fmtDate(rawDate)}
-                        </td>
+                        <td className="px-2 py-1.5">{fmtDate(rawDate)}</td>
                         <td className="px-2 py-1.5">
                           {formatMoney(original, anyLoan.currency)}
                         </td>
@@ -1479,9 +1629,7 @@ function FinanceSection({ empId }: { empId: number }) {
                 </div>
 
                 {loadingPayments && (
-                  <p className="text-xs text-slate-600">
-                    Cargando cuotas…
-                  </p>
+                  <p className="text-xs text-slate-600">Cargando cuotas…</p>
                 )}
 
                 {!loadingPayments && payments.length === 0 && (
@@ -1599,9 +1747,7 @@ function FinanceSection({ empId }: { empId: number }) {
               <tbody>
                 {garnishments.map((g) => (
                   <tr key={g.id} className="border-t border-slate-100">
-                    <td className="px-2 py-1.5">
-                      {g.description ?? "-"}
-                    </td>
+                    <td className="px-2 py-1.5">{g.description ?? "-"}</td>
                     <td className="px-2 py-1.5">
                       {formatMoney(g.amount, g.currency)}
                     </td>
@@ -1634,7 +1780,9 @@ function StatementShortcut({
   employeeCode?: string;
   onOpen: (code: string, from: string, to: string) => void;
 }) {
-  const [from, setFrom] = useState(dayjs().startOf("month").format("YYYY-MM-DD"));
+  const [from, setFrom] = useState(
+    dayjs().startOf("month").format("YYYY-MM-DD")
+  );
   const [to, setTo] = useState(dayjs().endOf("month").format("YYYY-MM-DD"));
 
   return (

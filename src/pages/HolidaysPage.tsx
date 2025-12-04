@@ -191,10 +191,36 @@ export default function HolidaysPage() {
               <option value="false">no</option>
             </select>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => fetchData(1)} disabled={loading}>Buscar</button>
-            <button onClick={resetFilters} disabled={loading}>Limpiar</button>
-          </div>
+          
+          <div
+  style={{
+    gridColumn: "1 / -1",
+    marginTop: 8,
+    display: "flex",
+    gap: 8,
+    justifyContent: "flex-start",
+  }}
+>
+  <button
+    onClick={() => fetchData(1)}
+    disabled={loading}
+    className="px-3 py-2 bg-blue-600 text-gray-800 rounded hover:bg-blue-700 disabled:opacity-50"
+    type="button"
+  >
+    {loading ? "Buscando…" : "Buscar"}
+  </button>
+
+  <button
+    onClick={resetFilters}
+    disabled={loading}
+    className="px-3 py-2 border rounded hover:bg-gray-100 disabled:opacity-50"
+    type="button"
+  >
+    Limpiar
+  </button>
+</div>
+
+
         </div>
       </section>
 
@@ -230,14 +256,40 @@ export default function HolidaysPage() {
             <label htmlFor="paidChk">Pagado</label>
           </div>
 
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="submit" disabled={!formValid}>{editingId ? "Guardar" : "Crear"}</button>
-            {editingId && (
-              <button type="button" onClick={() => { setEditingId(null); setForm({ date: "", name: "", scope: "national", paid: true }); }}>
-                Cancelar
-              </button>
-            )}
-          </div>
+          {/* Botones Crear / Guardar / Cancelar */}
+<div
+  style={{
+    gridColumn: "1 / -1",
+    marginTop: 10,
+    display: "flex",
+    gap: 10,
+    justifyContent: "flex-start",
+  }}
+>
+  
+  <button
+  type="submit"
+  disabled={!formValid}
+  className="px-4 py-2 rounded border border-gray-400 bg-white text-[#000] font-semibold hover:bg-gray-100 disabled:opacity-50"
+>
+  {editingId ? "Guardar" : "Crear"}
+</button>
+
+
+  {editingId && (
+    <button
+      type="button"
+      onClick={() => {
+        setEditingId(null);
+        setForm({ date: "", name: "", scope: "national", paid: true });
+      }}
+      className="px-4 py-2 rounded border hover:bg-gray-100 text-black"
+    >
+      Cancelar
+    </button>
+  )}
+</div>
+
         </form>
       </section>
 
